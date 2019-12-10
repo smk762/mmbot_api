@@ -2,7 +2,7 @@
 from typing import Optional, List
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.status import HTTP_401_UNAUTHORIZED
 import sqlite3
 import rpclib
@@ -82,7 +82,7 @@ async def root():
     return {"message": "Welcome to Antara Markerbot API. See /docs for all methods"}
 
 @app.post("/balance/{coin}")
-async def get_balance(coin: str):
+async def get_balance(coin: str = Field(None, description='Enter Coin Ticker', max_length=6)):
     balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, coin).json()
     return balance_info
 
@@ -112,6 +112,16 @@ async def create_strategy(name: str,
         "Parameters": strategy
     }
     return resp
+
+@app.post("/strategies/list")
+async def list_strategies():
+    json_files = [ x for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    strategies = []
+    for json_file in json_files:
+        with open(sys.path[0]+'/strategies/'+json_file) as j:
+            strategy = json.loads(j.read())
+            strategies.append(strategy)
+    return strategies
 
 # credentials in post are insecure. getting from external file may be required. Will follow same method as with makerbot_qt for now.
 
