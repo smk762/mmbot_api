@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from typing import Optional
+from typing import Optional, List
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -35,11 +35,17 @@ def colorize(string, color):
 
 rpc_url = "http://127.0.0.1:7783"
 
+config_folders = ['strategies', 'history']
+
+for folder in config_folders:
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
 creds_json_file = 'creds.json'
 if not os.path.exists(creds_json_file):
     with open(creds_json_file, 'w') as f:
         creds = {
-            "mm2_rpc_pass": "", 
+            "mm2_rpc_pass": "",
             "mm2_ip": "http://127.0.0.1:7783",
             "bn_key": "",
             "bn_secret": "",
@@ -79,6 +85,33 @@ async def root():
 async def get_balance(coin: str):
     balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, coin).json()
     return balance_info
+
+@app.post("/strategies/create")
+async def create_strategy(name: str,
+                          rel_list: List[str], 
+                          base_list: List[str],
+                          margin: float,
+                          refresh_interval: int = 30,
+                          balance_pct: int = 100,
+                          cex_countertrade: List[str] = []):
+
+    strat_file = name+'_strategy.json'
+    strategy = {
+        "name":name,
+        "rel_list":rel_list,
+        "base_list":base_list,
+        "margin":margin,
+        "refresh_interval":refresh_interval,
+        "balance_pct":balance_pct,
+        "cex_countertrade":cex_countertrade
+    }
+    with open("strategies/"+strat_file, 'w+') as f:
+        f.write(json.dumps(strategy))
+    resp = {
+        "Message": "Strategy '"+name+"' created",
+        "Parameters": strategy
+    }
+    return resp
 
 # credentials in post are insecure. getting from external file may be required. Will follow same method as with makerbot_qt for now.
 
@@ -126,7 +159,7 @@ strategy_events strategy_id <depth> -> displaying events (trades/transfers and e
 # check for in progress cex/mm2 trades. Cancel if None. If not None, schedule for cancel once in progress tradess complete.
 # If force is true, cancel regardless.
 
-# define_strategy_template(rel_list, base_list, margin, refresh_interval=30 (optional, minutes), balance_pct=100 (optional, default 100), cex_countertrade=None (optional, cex_name or None)
+# define_strategy_template(name, rel_list, base_list, margin, refresh_interval=30 (optional, minutes), balance_pct=100 (optional, default 100), cex_countertrade=None (optional, cex_name or None)
 # create trade strategy template, saved locally on client for future use. same params as "start_trading", but does not initiate bot loop.
 
 # get_active_strategies()
