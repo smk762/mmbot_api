@@ -86,18 +86,20 @@ async def get_balance(coin: str = Field(None, description='Enter Coin Ticker', m
     balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, coin).json()
     return balance_info
 
+# TODO: add domain validation for cex, tickers, strat_types
 @app.post("/strategies/create")
 async def create_strategy(name: str,
+                          strategy_type: str,
                           rel_list: List[str], 
                           base_list: List[str],
-                          margin: float,
+                          margin: float = 5,
                           refresh_interval: int = 30,
                           balance_pct: int = 100,
                           cex_countertrade: List[str] = []):
-
-    strat_file = name+'_strategy.json'
+    strat_file = name+'.json'
     strategy = {
         "name":name,
+        "strategy_type":strategy_type,
         "rel_list":rel_list,
         "base_list":base_list,
         "margin":margin,
@@ -108,8 +110,9 @@ async def create_strategy(name: str,
     with open("strategies/"+strat_file, 'w+') as f:
         f.write(json.dumps(strategy))
     resp = {
-        "Message": "Strategy '"+name+"' created",
-        "Parameters": strategy
+        "response": "success",
+        "message": "Strategy '"+name+"' created",
+        "parameters": strategy
     }
     return resp
 
@@ -123,12 +126,62 @@ async def list_strategies():
             strategies.append(strategy)
     return strategies
 
-# credentials in post are insecure. getting from external file may be required. Will follow same method as with makerbot_qt for now.
+@app.post("/strategies/active")
+async def active_strategies():
+    json_files = [ x for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    count = 0
+    strategies = []
+    for json_file in json_files:
+        with open(sys.path[0]+'/strategies/'+json_file) as j:
+            strategy = json.loads(j.read())
+            if strategy["status"] == 'active':
+                count += 1
+                strategies.append(strategy)
+    resp = {
+        "response": "success",
+        "message": str(count)+" strategies active",
+        "active_strategies": strategies
+    }
+    return resp
 
+@app.post("/strategies/history/{strategy_name}")
+async def strategy_history(strategy_name):
+    strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    if strategy_name not in strategies:
+        resp = {
+            "response": "error",
+            "message": "Strategy not found!"
+        }
+    elif not os.path.exists(sys.path[0]+"/history/"+strategy_name+".json"):
+        history = {
+            "mm2_orders_open": {},
+            "mm2_swaps_in_progress": {},
+            "mm2_swaps_completed": {},
+            "cex_orders_open": {},
+            "cex_swaps_in_progress": {},
+            "cex_swaps_completed": {},
+            "balance_deltas": {},
+            "status":"inactive"
+        }
+        resp = {
+            "response": "success",
+            "message": "History found for strategy: "+strategy_name,
+            "history": history
+        }        
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
+            f.write(json.dumps(resp))
+    else:
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+            resp = json.loads(f.read())
+    return resp
+
+
+
+#@app.post("/strategies/run/{strategy_name}")
+
+#@app.post("/strategies/history/{strategy_name}")
 
 '''
-start_strategy strategy_params -> result, strategy_id
-method: auth auth_key: testing_key -> result: success message: succesful auth
 method: start_trade strategy: marketmaking``margin: 10 tickers_base: [BTC, KMD] tickers_rel: [VRSC]
 method: get_trading_status -> result: success list_of_strategies_working: [1,2,3]
 
@@ -142,13 +195,7 @@ strategy_events strategy_id <depth> -> displaying events (trades/transfers and e
 
 # strategies examples - https://github.com/CoinAlpha/hummingbot/tree/master/documentation/docs/strategies
 
-# User sends auth, opens websocket connection, send response. If auth fails, close connection.
-# if authenticated, keep connection alive, and listen for commands. Periodically, or when required, send updates.
-
 ## API methods
-
-# authenticate_mm2(userpass, ip). same as req for mm2.
-# authenticate_cex(cex_name, cex_api, cex_secret).
 
 # start_trading(rel_list, base_list, margin, refresh_interval=30 (optional, minutes), balance_pct=100 (optional, default 100), cex_countertrade=None (optional, cex_name or None).
 # if cex not None, check if cex_auth is ok.
@@ -169,15 +216,8 @@ strategy_events strategy_id <depth> -> displaying events (trades/transfers and e
 # check for in progress cex/mm2 trades. Cancel if None. If not None, schedule for cancel once in progress tradess complete.
 # If force is true, cancel regardless.
 
-# define_strategy_template(name, rel_list, base_list, margin, refresh_interval=30 (optional, minutes), balance_pct=100 (optional, default 100), cex_countertrade=None (optional, cex_name or None)
-# create trade strategy template, saved locally on client for future use. same params as "start_trading", but does not initiate bot loop.
-
 # get_active_strategies()
 # show list of strategies currently in progress.
 
 # arbitrage(cex_list, coin_pair, min_profit_pct)
 # for a given coin_pair (e.g. KMDBTC), monitor all cex on the list, and mm2 for prices. If price differential between exchanges exceeds min_profit_pct, execute matching trades to take advantage.
-
-
-
-
