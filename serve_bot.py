@@ -1,21 +1,86 @@
 #!/usr/bin/env python3
-from fastapi import FastAPI
+from typing import Optional
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from starlette.status import HTTP_401_UNAUTHORIZED
+import sqlite3
 import rpclib
+import json
+import sys
+import os
+
+def colorize(string, color):
+        colors = {
+                'black':'\033[30m',
+                'red':'\033[31m',
+                'green':'\033[32m',
+                'orange':'\033[33m',
+                'blue':'\033[34m',
+                'purple':'\033[35m',
+                'cyan':'\033[36m',
+                'lightgrey':'\033[37m',
+                'darkgrey':'\033[90m',
+                'lightred':'\033[91m',
+                'lightgreen':'\033[92m',
+                'yellow':'\033[93m',
+                'lightblue':'\033[94m',
+                'pink':'\033[95m',
+                'lightcyan':'\033[96m',
+        }
+        if color not in colors:
+                return str(string)
+        else:
+                return colors[color] + str(string) + '\033[0m'
+
+rpc_url = "http://127.0.0.1:7783"
+
+creds_json_file = 'creds.json'
+if not os.path.exists(creds_json_file):
+    with open(creds_json_file, 'w') as f:
+        creds = {
+            "mm2_rpc_pass": "", 
+            "mm2_ip": "http://127.0.0.1:7783",
+            "bn_key": "",
+            "bn_secret": "",
+        }
+        f.write(json.dumps(creds))
+
+with open(creds_json_file) as j:
+    try:
+        creds_json = json.load(j)
+        if 'mm2_rpc_pass' in creds_json:
+            mm2_rpc_pass = creds_json['mm2_rpc_pass']
+        if 'mm2_ip' in creds_json:
+            mm2_ip = creds_json['mm2_ip']
+        if 'bn_key' in creds_json:
+            bn_key = creds_json['bn_key']
+        if 'bn_secret' in creds_json:
+            bn_secret = creds_json['bn_secret']
+    except Exception as e:
+        print(colorize("getting creds failed", 'red'))
+        print(e)
+
+if mm2_rpc_pass == '':
+    print(colorize("ERROR: You need to put your mm2 'mm2_rpc_pass' into creds.json to interact with Antara MarketMaker!", 'red'))
+    print(colorize("ERROR: It should match the rpc_pass in your MM2.json file", 'red'))
+    print(colorize("ERROR: Use Control-C to exit...", 'red'))
+
+if bn_key == '' or bn_secret == '':
+    print(colorize("WARNING: If you want to use Binance functionality, you need to put your API keys into creds.json", 'orange'))
 
 app = FastAPI()
-
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to Antara Markerbot API. See /docs for all methods"}
 
 @app.post("/balance/{coin}")
-async def get_balance(userip: str, userpass: str, coin: str):
-    balance_info = rpclib.my_balance(userip, userpass, coin).json()
+async def get_balance(coin: str):
+    balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, coin).json()
     return balance_info
 
-# credentials in post are insecure. getting from external file may be required.
+# credentials in post are insecure. getting from external file may be required. Will follow same method as with makerbot_qt for now.
 
 
 '''
