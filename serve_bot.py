@@ -11,6 +11,7 @@ import json
 import sys
 import os
 
+# todo: detect Ctrl-C or bot exit/death, then cancel all orders.
 # in thread, check strategies. for active strategies, last refresh time, and refresh interval. If time to refresh, refresh.
 
 def colorize(string, color):
@@ -153,6 +154,46 @@ async def active_strategies():
     }
     return resp
 
+def cancel_strategy(history):
+    session = history['sessions'][str(len(history['sessions']))]
+    started_at = session['started']
+    duration = time.time() - started_at
+    session.update({"duration":duration})
+
+    mm2_open_orders = session["mm2_orders_open"]
+    for order_uuid in mm2_open_orders:
+        rpclib.cancel_uuid(node_ip, user_pass, order_uuid)
+    cex_open_orders = session["cex_open_orders"]
+    for order in cex_open_orders:
+        if 'binance' in cex_open_orders:
+            for symbol in cex_open_orders['binance']:
+                order_id = cex_open_orders['binance'][symbol]
+                binance_api.delete_order(bn_key, bn_secret, symbol, order_id)
+
+    mm2_swaps_in_progress = session["mm2_swaps_in_progress"]
+    for swap in mm2_swaps_in_progress:
+        # alreay cancelled, move to completed, and mark as "cancelled while in progress"
+        pass
+    cex_swaps_in_progress = session["cex_swaps_in_progress"]
+    for swap in cex_swaps_in_progress:
+        # alreay cancelled, move to completed, and mark as "cancelled while in progress"
+        pass
+
+    balance_delta_coins = list(session["balance_deltas"].keys())
+    mm2_swaps_completed = session["mm2_swaps_completed"]
+    for swap in mm2_swaps_completed:
+        # calculate deltas
+        pass
+    cex_swaps_completed = session["cex_swaps_completed"]
+    for swap in cex_swaps_completed:
+        # calculate deltas
+        pass
+
+    session.update({"balance_deltas":balance_deltas})
+    sessions.update({str(len(history['sessions'])):session})
+    history.update({"sessions":sessions})
+
+
 @app.post("/strategies/stop/{strategy_name}")
 async def stop_strategy(strategy_name):
     strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
@@ -163,6 +204,7 @@ async def stop_strategy(strategy_name):
                 history = json.loads(f.read())
             if history['status'] == 'active':
                 history.update({"status":"inactive"})
+                history = cancel_strategy(history)
                 with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
                     f.write(json.dumps(history))
                 histories.append(history)
@@ -180,6 +222,7 @@ async def stop_strategy(strategy_name):
         with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
             history = json.loads(f.read())
         history.update({"status":"inactive"})
+
         with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
             f.write(json.dumps(history))
         resp = {
@@ -257,6 +300,7 @@ async def run_strategy(strategy_name):
             sessions = history['sessions']
             sessions.update({str(len(sessions)):{
                     "started":time.time(),
+                    "duration":0,
                     "mm2_orders_open": {},
                     "mm2_swaps_in_progress": {},
                     "mm2_swaps_completed": {},
@@ -289,6 +333,7 @@ async def run_strategy(strategy_name):
             sessions = history['sessions']
             sessions.update({str(len(sessions)):{
                     "started":time.time(),
+                    "duration":0,
                     "mm2_orders_open": {},
                     "mm2_swaps_in_progress": {},
                     "mm2_swaps_completed": {},
