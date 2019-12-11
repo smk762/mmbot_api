@@ -6,32 +6,35 @@ from pydantic import BaseModel, Field
 from starlette.status import HTTP_401_UNAUTHORIZED
 import sqlite3
 import rpclib
+import time
 import json
 import sys
 import os
 
+# in thread, check strategies. for active strategies, last refresh time, and refresh interval. If time to refresh, refresh.
+
 def colorize(string, color):
-        colors = {
-                'black':'\033[30m',
-                'red':'\033[31m',
-                'green':'\033[32m',
-                'orange':'\033[33m',
-                'blue':'\033[34m',
-                'purple':'\033[35m',
-                'cyan':'\033[36m',
-                'lightgrey':'\033[37m',
-                'darkgrey':'\033[90m',
-                'lightred':'\033[91m',
-                'lightgreen':'\033[92m',
-                'yellow':'\033[93m',
-                'lightblue':'\033[94m',
-                'pink':'\033[95m',
-                'lightcyan':'\033[96m',
-        }
-        if color not in colors:
-                return str(string)
-        else:
-                return colors[color] + str(string) + '\033[0m'
+    colors = {
+        'black':'\033[30m',
+        'red':'\033[31m',
+        'green':'\033[32m',
+        'orange':'\033[33m',
+        'blue':'\033[34m',
+        'purple':'\033[35m',
+        'cyan':'\033[36m',
+        'lightgrey':'\033[37m',
+        'darkgrey':'\033[90m',
+        'lightred':'\033[91m',
+        'lightgreen':'\033[92m',
+        'yellow':'\033[93m',
+        'lightblue':'\033[94m',
+        'pink':'\033[95m',
+        'lightcyan':'\033[96m',
+    }
+    if color not in colors:
+        return str(string)
+    else:
+        return colors[color] + str(string) + '\033[0m'
 
 rpc_url = "http://127.0.0.1:7783"
 
@@ -150,17 +153,16 @@ async def strategy_history(strategy_name):
     if strategy_name not in strategies:
         resp = {
             "response": "error",
-            "message": "Strategy not found!"
+            "message": "Strategy '"+strategy_name+"' not found!"
         }
     elif not os.path.exists(sys.path[0]+"/history/"+strategy_name+".json"):
-        history = {
-            "mm2_orders_open": {},
-            "mm2_swaps_in_progress": {},
-            "mm2_swaps_completed": {},
-            "cex_orders_open": {},
-            "cex_swaps_in_progress": {},
-            "cex_swaps_completed": {},
-            "balance_deltas": {},
+        history = { 
+            "num_sessions":{},
+            "sessions":{},
+            "last_refresh": 0,
+            "total_mm2_swaps_completed": {},
+            "total_cex_swaps_completed": {},
+            "total_balance_deltas": {},
             "status":"inactive"
         }
         resp = {
@@ -175,11 +177,83 @@ async def strategy_history(strategy_name):
             resp = json.loads(f.read())
     return resp
 
+@app.post("/strategies/run/{strategy_name}")
+async def run_strategy(strategy_name):
+    with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
+        strategy = json.loads(f.read())
+    with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+        history = json.loads(f.read())
+    if strategy['type'] == "margin":
+        #result = botlib.run_margin_strategy(strategy)
+        strategy.update({"status":"active"})
+        # init balance datas
+        balance_deltas = {}
+        for rel in strategy["rel_list"]:
+            balance_deltas.update({rel:0})
+        for base in strategy["base_list"]:
+            if base not in strategy["rel_list"]:
+                balance_deltas.update({base:0})
+        # init session
+        sessions = history['sessions']
+        sessions.update({str(len(sessions)):{
+                "started":time.time(),
+                "mm2_orders_open": {},
+                "mm2_swaps_in_progress": {},
+                "mm2_swaps_completed": {},
+                "cex_orders_open": {},
+                "cex_swaps_in_progress": {},
+                "cex_swaps_completed": {},
+                "balance_deltas": balance_deltas,
+            }})
+        history.update({"sessions":sessions})
+        with open("history/"+strategy_name, 'w+') as f:
+            f.write(json.dumps(history))
+        with open("strategies/"+strategy_name, 'w+') as f:
+            f.write(json.dumps(strategy))
+        resp = {
+            "response": "success",
+            "message": "Strategy '"+strategy['type']+"' started!",
+        }
+        pass
+    elif strategy['type'] == "arbritage":
+        #result = botlib.run_arb_strategy(strategy) TO THREAD
+        strategy.update({"status":"active"})
+        # init balance datas
+        balance_deltas = {}
+        for rel in strategy["rel_list"]:
+            balance_deltas.update({rel:0})
+        for base in strategy["base_list"]:
+            if base not in strategy["rel_list"]:
+                balance_deltas.update({base:0})
+        # init session
+        sessions = history['sessions']
+        sessions.update({str(len(sessions)):{
+                "started":time.time(),
+                "mm2_orders_open": {},
+                "mm2_swaps_in_progress": {},
+                "mm2_swaps_completed": {},
+                "cex_orders_open": {},
+                "cex_swaps_in_progress": {},
+                "cex_swaps_completed": {},
+                "balance_deltas": balance_deltas,
+            }})
+        history.update({"sessions":sessions})
+        with open("history/"+strategy_name, 'w+') as f:
+            f.write(json.dumps(history))
+        with open("strategies/"+strategy_name, 'w+') as f:
+            f.write(json.dumps(strategy))
+        resp = {
+            "response": "success",
+            "message": "Strategy '"+strategy['type']+"' started",
+        }
+        pass
+    else:
+        resp = {
+            "response": "error",
+            "message": "Strategy '"+strategy['type']+"' not found!"
+        }
+    return resp
 
-
-#@app.post("/strategies/run/{strategy_name}")
-
-#@app.post("/strategies/history/{strategy_name}")
 
 '''
 method: start_trade strategy: marketmaking``margin: 10 tickers_base: [BTC, KMD] tickers_rel: [VRSC]
