@@ -99,24 +99,30 @@ async def create_strategy(name: str,
                           refresh_interval: int = 30,
                           balance_pct: int = 100,
                           cex_countertrade: List[str] = []):
-    strat_file = name+'.json'
-    strategy = {
-        "name":name,
-        "strategy_type":strategy_type,
-        "rel_list":rel_list,
-        "base_list":base_list,
-        "margin":margin,
-        "refresh_interval":refresh_interval,
-        "balance_pct":balance_pct,
-        "cex_countertrade":cex_countertrade
-    }
-    with open("strategies/"+strat_file, 'w+') as f:
-        f.write(json.dumps(strategy))
-    resp = {
-        "response": "success",
-        "message": "Strategy '"+name+"' created",
-        "parameters": strategy
-    }
+    if name == 'all':
+        resp = {
+            "response": "error",
+            "message": "Strategy name 'all' is reserved, use a different name.",
+        }
+    else:
+        strat_file = name+'.json'
+        strategy = {
+            "name":name,
+            "strategy_type":strategy_type,
+            "rel_list":rel_list,
+            "base_list":base_list,
+            "margin":margin,
+            "refresh_interval":refresh_interval,
+            "balance_pct":balance_pct,
+            "cex_countertrade":cex_countertrade
+        }
+        with open("strategies/"+strat_file, 'w+') as f:
+            f.write(json.dumps(strategy))
+        resp = {
+            "response": "success",
+            "message": "Strategy '"+name+"' created",
+            "parameters": strategy
+        }
     return resp
 
 @app.post("/strategies/list")
@@ -147,10 +153,62 @@ async def active_strategies():
     }
     return resp
 
+@app.post("/strategies/stop/{strategy_name}")
+async def stop_strategy(strategy_name):
+    strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    if strategy_name == 'all':
+        histories = []
+        for strategy in strategies:
+            with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+                history = json.loads(f.read())
+            if history['status'] == 'active':
+                history.update({"status":"inactive"})
+                with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
+                    f.write(json.dumps(history))
+                histories.append(history)
+        resp = {
+            "response": "success",
+            "message": "All active strategies stopped!",
+            "status": histories
+        }        
+    elif strategy_name not in strategies:
+        resp = {
+            "response": "error",
+            "message": "Strategy '"+strategy_name+"' not found!"
+        }
+    else:
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+            history = json.loads(f.read())
+        history.update({"status":"inactive"})
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
+            f.write(json.dumps(history))
+        resp = {
+            "response": "success",
+            "message": strategy_name+" stopped",
+            "status": history
+        }
+    return resp
+
 @app.post("/strategies/history/{strategy_name}")
 async def strategy_history(strategy_name):
     strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
-    if strategy_name not in strategies:
+    if len(strategies) == 0:
+        resp = {
+            "response": "error",
+            "message": "No strategies found!"
+        }
+    elif strategy_name == 'all':
+        histories = []
+        for strategy in strategies:
+            with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+                history = json.loads(f.read())
+            histories.append(history)
+        resp = {
+            "response": "success",
+            "message": str(len(strategies))+" found!",
+            "histories": histories
+        }
+    elif strategy_name not in strategies:
         resp = {
             "response": "error",
             "message": "Strategy '"+strategy_name+"' not found!"
@@ -179,78 +237,85 @@ async def strategy_history(strategy_name):
 
 @app.post("/strategies/run/{strategy_name}")
 async def run_strategy(strategy_name):
-    with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
-        strategy = json.loads(f.read())
-    with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
-        history = json.loads(f.read())
-    if strategy['type'] == "margin":
-        #result = botlib.run_margin_strategy(strategy)
-        strategy.update({"status":"active"})
-        # init balance datas
-        balance_deltas = {}
-        for rel in strategy["rel_list"]:
-            balance_deltas.update({rel:0})
-        for base in strategy["base_list"]:
-            if base not in strategy["rel_list"]:
-                balance_deltas.update({base:0})
-        # init session
-        sessions = history['sessions']
-        sessions.update({str(len(sessions)):{
-                "started":time.time(),
-                "mm2_orders_open": {},
-                "mm2_swaps_in_progress": {},
-                "mm2_swaps_completed": {},
-                "cex_orders_open": {},
-                "cex_swaps_in_progress": {},
-                "cex_swaps_completed": {},
-                "balance_deltas": balance_deltas,
-            }})
-        history.update({"sessions":sessions})
-        with open("history/"+strategy_name, 'w+') as f:
-            f.write(json.dumps(history))
-        with open("strategies/"+strategy_name, 'w+') as f:
-            f.write(json.dumps(strategy))
-        resp = {
-            "response": "success",
-            "message": "Strategy '"+strategy['type']+"' started!",
-        }
-        pass
-    elif strategy['type'] == "arbritage":
-        #result = botlib.run_arb_strategy(strategy) TO THREAD
-        strategy.update({"status":"active"})
-        # init balance datas
-        balance_deltas = {}
-        for rel in strategy["rel_list"]:
-            balance_deltas.update({rel:0})
-        for base in strategy["base_list"]:
-            if base not in strategy["rel_list"]:
-                balance_deltas.update({base:0})
-        # init session
-        sessions = history['sessions']
-        sessions.update({str(len(sessions)):{
-                "started":time.time(),
-                "mm2_orders_open": {},
-                "mm2_swaps_in_progress": {},
-                "mm2_swaps_completed": {},
-                "cex_orders_open": {},
-                "cex_swaps_in_progress": {},
-                "cex_swaps_completed": {},
-                "balance_deltas": balance_deltas,
-            }})
-        history.update({"sessions":sessions})
-        with open("history/"+strategy_name, 'w+') as f:
-            f.write(json.dumps(history))
-        with open("strategies/"+strategy_name, 'w+') as f:
-            f.write(json.dumps(strategy))
-        resp = {
-            "response": "success",
-            "message": "Strategy '"+strategy['type']+"' started",
-        }
-        pass
+    strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    if strategy_name in strategies:
+        with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
+            strategy = json.loads(f.read())
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+            history = json.loads(f.read())
+        if strategy['type'] == "margin":
+            #result = botlib.run_margin_strategy(strategy)
+            strategy.update({"status":"active"})
+            # init balance datas
+            balance_deltas = {}
+            for rel in strategy["rel_list"]:
+                balance_deltas.update({rel:0})
+            for base in strategy["base_list"]:
+                if base not in strategy["rel_list"]:
+                    balance_deltas.update({base:0})
+            # init session
+            sessions = history['sessions']
+            sessions.update({str(len(sessions)):{
+                    "started":time.time(),
+                    "mm2_orders_open": {},
+                    "mm2_swaps_in_progress": {},
+                    "mm2_swaps_completed": {},
+                    "cex_orders_open": {},
+                    "cex_swaps_in_progress": {},
+                    "cex_swaps_completed": {},
+                    "balance_deltas": balance_deltas,
+                }})
+            history.update({"sessions":sessions})
+            with open("history/"+strategy_name, 'w+') as f:
+                f.write(json.dumps(history))
+            with open("strategies/"+strategy_name, 'w+') as f:
+                f.write(json.dumps(strategy))
+            resp = {
+                "response": "success",
+                "message": "Strategy '"+strategy['type']+"' started!",
+            }
+            pass
+        elif strategy['type'] == "arbritage":
+            #result = botlib.run_arb_strategy(strategy) TO THREAD
+            strategy.update({"status":"active"})
+            # init balance datas
+            balance_deltas = {}
+            for rel in strategy["rel_list"]:
+                balance_deltas.update({rel:0})
+            for base in strategy["base_list"]:
+                if base not in strategy["rel_list"]:
+                    balance_deltas.update({base:0})
+            # init session
+            sessions = history['sessions']
+            sessions.update({str(len(sessions)):{
+                    "started":time.time(),
+                    "mm2_orders_open": {},
+                    "mm2_swaps_in_progress": {},
+                    "mm2_swaps_completed": {},
+                    "cex_orders_open": {},
+                    "cex_swaps_in_progress": {},
+                    "cex_swaps_completed": {},
+                    "balance_deltas": balance_deltas,
+                }})
+            history.update({"sessions":sessions})
+            with open("history/"+strategy_name, 'w+') as f:
+                f.write(json.dumps(history))
+            with open("strategies/"+strategy_name, 'w+') as f:
+                f.write(json.dumps(strategy))
+            resp = {
+                "response": "success",
+                "message": "Strategy '"+strategy['type']+"' started",
+            }
+            pass
+        else:
+            resp = {
+                "response": "error",
+                "message": "Strategy '"+strategy['type']+"' not found!"
+            }
     else:
         resp = {
             "response": "error",
-            "message": "Strategy '"+strategy['type']+"' not found!"
+            "message": "Strategy '"+strategy_name+"' not found!"
         }
     return resp
 
