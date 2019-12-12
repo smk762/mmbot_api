@@ -4,38 +4,78 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from starlette.status import HTTP_401_UNAUTHORIZED
-import sqlite3
+import threading
+import logging
+#import sqlite3
 import rpclib
 import time
 import json
 import sys
 import os
 
-# todo: detect Ctrl-C or bot exit/death, then cancel all orders.
+
+## ALTERNATIVE APIS
+### DEX: https://api.blocknet.co/#xbridge-api / https://github.com/blocknetdx/dxmakerbot requires syncd local nodes
+
+# todo: detect Ctrl-C or bot exit/death, then cancel all orders. blocking thread might allow this?
 # in thread, check strategies. for active strategies, last refresh time, and refresh interval. If time to refresh, refresh.
 
-def colorize(string, color):
-    colors = {
-        'black':'\033[30m',
-        'red':'\033[31m',
-        'green':'\033[32m',
-        'orange':'\033[33m',
-        'blue':'\033[34m',
-        'purple':'\033[35m',
-        'cyan':'\033[36m',
-        'lightgrey':'\033[37m',
-        'darkgrey':'\033[90m',
-        'lightred':'\033[91m',
-        'lightgreen':'\033[92m',
-        'yellow':'\033[93m',
-        'lightblue':'\033[94m',
-        'pink':'\033[95m',
-        'lightcyan':'\033[96m',
+## JSON Schemas
+    
+
+    '''
+    path = ./strategies/{strategy_name}.json
+
+    strategy = {
+        "name": str,
+        "strategy_type": str,
+        "rel_list": list,
+        "base_list": list,
+        "margin": float,
+        "refresh_interval": int,
+        "balance_pct": int,
+        "cex_countertrade": list,
+        "reference_api": str
     }
-    if color not in colors:
-        return str(string)
-    else:
-        return colors[color] + str(string) + '\033[0m'
+    '''
+
+
+    '''
+    path = ./history/{strategy_name}.json
+
+    history = { 
+        "num_sessions": dict,
+        "sessions":{
+            "1":{
+                "started": timestamp,
+                "duration": int,
+                "mm2_open_orders": list,
+                "mm2_swaps_in_progress": dict,
+                "mm2_swaps_completed": dict,
+                "cex_open_orders": dict,
+                "cex_swaps_in_progress": dict,
+                "cex_swaps_completed": dict,
+                "balance_deltas": dict,
+            }
+        },
+        "last_refresh": int,
+        "total_mm2_swaps_completed": int,
+        "total_cex_swaps_completed": int,
+        "total_balance_deltas": dict,
+        "status":str
+    }
+    '''
+
+    '''
+    cached in mem
+
+    prices = {
+        coingecko:{},
+        coinpaprika:{},
+        binance:{},
+        average:{}
+    }
+    '''
 
 rpc_url = "http://127.0.0.1:7783"
 
@@ -78,6 +118,96 @@ if mm2_rpc_pass == '':
 
 if bn_key == '' or bn_secret == '':
     print(colorize("WARNING: If you want to use Binance functionality, you need to put your API keys into creds.json", 'orange'))
+
+def colorize(string, color):
+    colors = {
+        'black':'\033[30m',
+        'red':'\033[31m',
+        'green':'\033[32m',
+        'orange':'\033[33m',
+        'blue':'\033[34m',
+        'purple':'\033[35m',
+        'cyan':'\033[36m',
+        'lightgrey':'\033[37m',
+        'darkgrey':'\033[90m',
+        'lightred':'\033[91m',
+        'lightgreen':'\033[92m',
+        'yellow':'\033[93m',
+        'lightblue':'\033[94m',
+        'pink':'\033[95m',
+        'lightcyan':'\033[96m',
+    }
+    if color not in colors:
+        return str(string)
+    else:
+        return colors[color] + str(string) + '\033[0m'
+
+### THREAD FUNCTIONS
+
+def prices_loop():
+    # periodically refresh prices and cache for reference.
+    pass
+
+def bot_loop():
+    strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    for strategy in strategies:
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+            history = json.loads(f.read())
+        if history['status'] == 'active':
+            with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
+                strategy = json.loads(f.read())
+
+            # check refresh interval vs last refresh
+            if history['last_refresh'] + strategy['refresh_interval']*60 > int(time.time()):
+                session = history['sessions'][str(len(sessions)-1)]
+
+                # cancel_orders
+                binance_orders = session['cex_open_orders']['binance']
+                for symbol in binance_orders:
+                    order_id = binance_orders[symbol]
+                    binance_api.delete_order(bn_key, bn_secret, symbol, order_id)
+                mm2_order_uuids = session_history['mm2_open_orders']
+                for order_uuid in mm2_order_uuids:
+                    rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
+
+                # place fresh orders
+                base_list = strategy['base_list']
+                rel_list = strategy['rel_list']
+                margin = strategy['margin']
+                balance_pct = strategy['balance_pct']
+                if strategy['strategy_type'] == 'margin':
+                    for base in base_list:
+                        for rel in rel_list:
+                            if base != rel:
+                                # get trade price from api + margin
+                                # place new order
+                                pass
+
+
+
+            history['status']
+
+            history.update({})
+        "name": str,
+        "strategy_type": str,
+        "rel_list": list,
+        "base_list": list,
+        "margin": float,
+        "refresh_interval": int,
+        "balance_pct": int,
+        "cex_countertrade": list
+
+            history = cancel_strategy(history)
+            with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
+                f.write(json.dumps(history))
+
+
+### BOT LOGIC FUNCTIONS
+
+def margin_strategy_cancel(uuid_list):
+
+
+### API CALLS
 
 app = FastAPI()
 
@@ -157,12 +287,12 @@ async def active_strategies():
 def cancel_strategy(history):
     session = history['sessions'][str(len(history['sessions']))]
     started_at = session['started']
-    duration = time.time() - started_at
+    duration = int(time.time()) - started_at
     session.update({"duration":duration})
 
-    mm2_open_orders = session["mm2_orders_open"]
+    mm2_open_orders = session["mm2_open_orders"]
     for order_uuid in mm2_open_orders:
-        rpclib.cancel_uuid(node_ip, user_pass, order_uuid)
+        rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
     cex_open_orders = session["cex_open_orders"]
     for order in cex_open_orders:
         if 'binance' in cex_open_orders:
@@ -192,7 +322,6 @@ def cancel_strategy(history):
     session.update({"balance_deltas":balance_deltas})
     sessions.update({str(len(history['sessions'])):session})
     history.update({"sessions":sessions})
-
 
 @app.post("/strategies/stop/{strategy_name}")
 async def stop_strategy(strategy_name):
@@ -299,12 +428,12 @@ async def run_strategy(strategy_name):
             # init session
             sessions = history['sessions']
             sessions.update({str(len(sessions)):{
-                    "started":time.time(),
+                    "started":int(time.time()),
                     "duration":0,
-                    "mm2_orders_open": {},
+                    "mm2_open_orders": {},
                     "mm2_swaps_in_progress": {},
                     "mm2_swaps_completed": {},
-                    "cex_orders_open": {},
+                    "cex_open_orders": {},
                     "cex_swaps_in_progress": {},
                     "cex_swaps_completed": {},
                     "balance_deltas": balance_deltas,
@@ -332,12 +461,12 @@ async def run_strategy(strategy_name):
             # init session
             sessions = history['sessions']
             sessions.update({str(len(sessions)):{
-                    "started":time.time(),
+                    "started":int(time.time()),
                     "duration":0,
-                    "mm2_orders_open": {},
+                    "mm2_open_orders": {},
                     "mm2_swaps_in_progress": {},
                     "mm2_swaps_completed": {},
-                    "cex_orders_open": {},
+                    "cex_open_orders": {},
                     "cex_swaps_in_progress": {},
                     "cex_swaps_completed": {},
                     "balance_deltas": balance_deltas,
@@ -365,6 +494,11 @@ async def run_strategy(strategy_name):
     return resp
 
 
+if __name__ == "__main__":
+    format = "%(asctime)s: %(message)s"
+    logging.basicConfig(format=format, level=logging.INFO,
+                        datefmt="%H:%M:%S")
+    bot_thread = threading.Thread(target=bot_loop, args=())
 '''
 method: start_trade strategy: marketmaking``margin: 10 tickers_base: [BTC, KMD] tickers_rel: [VRSC]
 method: get_trading_status -> result: success list_of_strategies_working: [1,2,3]
