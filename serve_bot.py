@@ -23,7 +23,7 @@ import os
 ## JSON Schemas
     
 
-    '''
+'''
     path = ./strategies/{strategy_name}.json
 
     strategy = {
@@ -37,10 +37,10 @@ import os
         "cex_countertrade": list,
         "reference_api": str
     }
-    '''
+'''
 
 
-    '''
+'''
     path = ./history/{strategy_name}.json
 
     history = { 
@@ -64,9 +64,9 @@ import os
         "total_balance_deltas": dict,
         "status":str
     }
-    '''
+'''
 
-    '''
+'''
     cached in mem
 
     prices = {
@@ -75,15 +75,39 @@ import os
         binance:{},
         average:{}
     }
-    '''
+'''
 
 rpc_url = "http://127.0.0.1:7783"
-
 config_folders = ['strategies', 'history']
 
 for folder in config_folders:
     if not os.path.exists(folder):
         os.makedirs(folder)
+
+
+def colorize(string, color):
+    colors = {
+        'black':'\033[30m',
+        'red':'\033[31m',
+        'green':'\033[32m',
+        'orange':'\033[33m',
+        'blue':'\033[34m',
+        'purple':'\033[35m',
+        'cyan':'\033[36m',
+        'lightgrey':'\033[37m',
+        'darkgrey':'\033[90m',
+        'lightred':'\033[91m',
+        'lightgreen':'\033[92m',
+        'yellow':'\033[93m',
+        'lightblue':'\033[94m',
+        'pink':'\033[95m',
+        'lightcyan':'\033[96m',
+    }
+    if color not in colors:
+        return str(string)
+    else:
+        return colors[color] + str(string) + '\033[0m'
+
 
 creds_json_file = 'creds.json'
 if not os.path.exists(creds_json_file):
@@ -118,29 +142,6 @@ if mm2_rpc_pass == '':
 
 if bn_key == '' or bn_secret == '':
     print(colorize("WARNING: If you want to use Binance functionality, you need to put your API keys into creds.json", 'orange'))
-
-def colorize(string, color):
-    colors = {
-        'black':'\033[30m',
-        'red':'\033[31m',
-        'green':'\033[32m',
-        'orange':'\033[33m',
-        'blue':'\033[34m',
-        'purple':'\033[35m',
-        'cyan':'\033[36m',
-        'lightgrey':'\033[37m',
-        'darkgrey':'\033[90m',
-        'lightred':'\033[91m',
-        'lightgreen':'\033[92m',
-        'yellow':'\033[93m',
-        'lightblue':'\033[94m',
-        'pink':'\033[95m',
-        'lightcyan':'\033[96m',
-    }
-    if color not in colors:
-        return str(string)
-    else:
-        return colors[color] + str(string) + '\033[0m'
 
 ### THREAD FUNCTIONS
 
@@ -185,17 +186,9 @@ def bot_loop():
 
 
 
-            history['status']
+#            history['status']
 
-            history.update({})
-        "name": str,
-        "strategy_type": str,
-        "rel_list": list,
-        "base_list": list,
-        "margin": float,
-        "refresh_interval": int,
-        "balance_pct": int,
-        "cex_countertrade": list
+#            history.update({})
 
             history = cancel_strategy(history)
             with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
@@ -203,8 +196,6 @@ def bot_loop():
 
 
 ### BOT LOGIC FUNCTIONS
-
-def margin_strategy_cancel(uuid_list):
 
 
 ### API CALLS
