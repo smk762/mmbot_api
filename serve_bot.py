@@ -14,6 +14,8 @@ import json
 import sys
 import os
 
+# what does bot do when mm2 is down? Respawn, or exit (could leave open orders)?
+
 
 ## ALTERNATIVE APIS
 ### DEX: https://api.blocknet.co/#xbridge-api / https://github.com/blocknetdx/dxmakerbot requires syncd local nodes
@@ -185,13 +187,13 @@ class bot_update_thread(object):
     def run(self):
         while True:
             global bot_data
-            bot_data = botlib.bot_loop(prices_data)
+            bot_data = botlib.bot_loop(mm2_ip, mm2_rpc_pass, prices_data)
             time.sleep(self.interval)
 
 bot_thread = bot_update_thread()
 
 class orderbook_update_thread(object):
-    def __init__(self, interval=30):                  # 20 min, TODO: change to var
+    def __init__(self, interval=10):                  # 20 min, TODO: change to var
         self.interval = interval
         thread = Thread(target=self.run, args=())
         thread.daemon = True                            # Daemonize thread
@@ -204,10 +206,6 @@ class orderbook_update_thread(object):
             time.sleep(self.interval)
 
 orderbook_thread = orderbook_update_thread()
-
-
-### BOT LOGIC FUNCTIONS
-
 
 ### API CALLS
 

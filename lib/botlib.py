@@ -4,7 +4,7 @@ import sys
 import json
 import time
 import requests
-from . import rpclib   
+from . import rpclib, priceslib
 
 def start_mm2_bot_loop(creds, buy_coins, sell_coins, cancel_previous, trade_max):
     for base in sell_coins:
@@ -47,55 +47,65 @@ def cancel_session_orders(session):
     for order_uuid in mm2_order_uuids:
         rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
 
-def submit_strategy_orders(strategy, prices_data):
+def submit_strategy_orders(mm2_ip, mm2_rpc_pass, strategy):
+    prices_data = priceslib.prices_loop()
     print("submitting strategy orders")
     print("Strategy: "+str(strategy))
+    print("Prices data: "+str(prices_data))
     base_list = strategy['base_list']
     rel_list = strategy['rel_list']
     margin = strategy['margin']
     balance_pct = strategy['balance_pct']
-    print("strat: "+str(strategy))
     if strategy['strategy_type'] == 'margin':
         for base in base_list:
             for rel in rel_list:
                 if base != rel:
                     # in case prices data not yet populated
                     if base in prices_data['average']:
-                        base_btc_price = prices_data['average'][base]
-                        rel_btc_price = prices_data['average'][rel]
+                        base_btc_price = prices_data['average'][base]['BTC']
+                        rel_btc_price = prices_data['average'][rel]['BTC']
                         # todo: make fin safe (no float)
-                        trade_price = (base_btc_price/rel_btc_price)*(1+margin/100)
-                        print("trade price: "+base+" (base) / "+rel+" (rel) "+str(trade_price))
-                        # place new order
+                        rel_price = (rel_btc_price/base_btc_price)*(1+margin/100)
+                        base_balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, base).json()
+                        available_base_balance = float(base_balance_info["balance"]) - float(base_balance_info["locked_by_swaps"])
+                        basevolume = available_base_balance * strategy['balance_pct']/100
+                        print("trade price: "+base+" (base) / "+rel+" (rel) "+str(rel_price)+" volume = "+str(basevolume))
+                        # place new order TODO: check if swap in progress.
+                        if strategy['balance_pct'] != 100:
+                            resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, False, True)
+                        else:
+                            resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, str(rel), basevolume, str(rel_price), True, True)
+                        print("rpclib.setprice("+mm2_ip+", "+mm2_rpc_pass+", "+base+", "+str(rel)+", "+str(rel_price))
+                        print(resp.json())
                         pass
                     else:
                         print("No price data yet...")
                         return
 
-def bot_loop(prices_data):
+def bot_loop(mm2_ip, mm2_rpc_pass, prices_data):
     print("starting bot loop")
     strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
-    bot_data = "no strats active"
+    bot_data = "bot data placeholder"
     for strategy_name in strategies:
         with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
             history = json.loads(f.read())
         if history['status'] == 'active':
-            bot_data = "Strategy: "+strategy_name+" is active"
-
+            print("Active strategy: "+strategy_name)
             with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
                 strategy = json.loads(f.read())
-            bot_data = "History: "+str(history)
-
+            print("History: "+str(history))
+            print(history['last_refresh'])
+            print(str(strategy['refresh_interval']))
+            print(str(time.time()))
             # check refresh interval vs last refresh
-            if history['last_refresh'] == 0 or history['last_refresh'] + strategy['refresh_interval']*60 > int(time.time()):
+            if history['last_refresh'] == 0 or history['last_refresh'] + strategy['refresh_interval'] < int(time.time()):
+                print("Refreshing strategy: "+strategy_name)
                 history.update({'last_refresh':int(time.time())})
-                print("Strategy: "+strategy_name+" refreshing orders")
-                bot_data = "Strategy type: "+strategy['strategy_type']
                 session = history['sessions'][str(len(history['sessions'])-1)]
                 # cancel old orders
                 cancel_session_orders(session)
                 # place fresh orders
-                submit_strategy_orders(strategy, prices_data)
+                submit_strategy_orders(mm2_ip, mm2_rpc_pass, strategy)
                 # update session history
                 with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
                      f.write(json.dumps(history))
@@ -120,3 +130,6 @@ def orderbook_loop(node_ip, user_pass):
                 orderbook_data.append(orderbook.json())
     print("orderbook loop completed")
     return orderbook_data
+
+
+## Use orderbook and prices data to identigy aritrage opportunities
