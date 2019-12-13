@@ -4,10 +4,12 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from starlette.status import HTTP_401_UNAUTHORIZED
-import threading
+from threading import Thread
+import asyncio
 import logging
 #import sqlite3
-import rpclib
+from lib import priceslib
+from lib import rpclib, botlib
 import time
 import json
 import sys
@@ -84,6 +86,20 @@ for folder in config_folders:
     if not os.path.exists(folder):
         os.makedirs(folder)
 
+prices_data = {
+    "binance":{
+
+    },
+    "paprika":{
+
+    },
+    "gecko":{
+
+    },
+    "average":{
+
+    }
+}
 
 def colorize(string, color):
     colors = {
@@ -107,7 +123,6 @@ def colorize(string, color):
         return str(string)
     else:
         return colors[color] + str(string) + '\033[0m'
-
 
 creds_json_file = 'creds.json'
 if not os.path.exists(creds_json_file):
@@ -143,56 +158,37 @@ if mm2_rpc_pass == '':
 if bn_key == '' or bn_secret == '':
     print(colorize("WARNING: If you want to use Binance functionality, you need to put your API keys into creds.json", 'orange'))
 
-### THREAD FUNCTIONS
+### THREAD Classes
 
-def prices_loop():
-    # periodically refresh prices and cache for reference.
-    pass
+class price_update_thread(object):
+    def __init__(self, interval=120):
+        self.interval = interval
+        thread = Thread(target=self.run, args=())
+        thread.daemon = True                            # Daemonize thread
+        thread.start()                                  # Start the execution
 
-def bot_loop():
-    strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
-    for strategy in strategies:
-        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
-            history = json.loads(f.read())
-        if history['status'] == 'active':
-            with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
-                strategy = json.loads(f.read())
+    def run(self):
+        global prices_data
+        while True:
+            prices_data = priceslib.get_prices_data()
+            time.sleep(self.interval)
 
-            # check refresh interval vs last refresh
-            if history['last_refresh'] + strategy['refresh_interval']*60 > int(time.time()):
-                session = history['sessions'][str(len(sessions)-1)]
+prices_thread = price_update_thread()
 
-                # cancel_orders
-                binance_orders = session['cex_open_orders']['binance']
-                for symbol in binance_orders:
-                    order_id = binance_orders[symbol]
-                    binance_api.delete_order(bn_key, bn_secret, symbol, order_id)
-                mm2_order_uuids = session_history['mm2_open_orders']
-                for order_uuid in mm2_order_uuids:
-                    rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
+class bot_update_thread(object):
+    def __init__(self, interval=1200):                  # 20 min, TODO: change to var
+        self.interval = interval
+        thread = Thread(target=self.run, args=())
+        thread.daemon = True                            # Daemonize thread
+        thread.start()                                  # Start the execution
 
-                # place fresh orders
-                base_list = strategy['base_list']
-                rel_list = strategy['rel_list']
-                margin = strategy['margin']
-                balance_pct = strategy['balance_pct']
-                if strategy['strategy_type'] == 'margin':
-                    for base in base_list:
-                        for rel in rel_list:
-                            if base != rel:
-                                # get trade price from api + margin
-                                # place new order
-                                pass
+    def run(self):
+        while True:
+            prices_data = botlib.bot_loop()
+            time.sleep(self.interval)
 
+bot_thread = bot_update_thread()
 
-
-#            history['status']
-
-#            history.update({})
-
-            history = cancel_strategy(history)
-            with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
-                f.write(json.dumps(history))
 
 
 ### BOT LOGIC FUNCTIONS
@@ -240,11 +236,42 @@ async def create_strategy(name: str,
         }
         with open("strategies/"+strat_file, 'w+') as f:
             f.write(json.dumps(strategy))
+
+        if not os.path.exists(sys.path[0]+"/history/"+name+".json"):
+            history = { 
+                "num_sessions":0,
+                "sessions":{},
+                "last_refresh": 0,
+                "total_mm2_swaps_completed": 0,
+                "total_cex_swaps_completed": 0,
+                "total_balance_deltas": {},
+                "status":"inactive"
+            }
+            with open("history/"+name+".json", 'w+') as f:
+                f.write(json.dumps(history))
         resp = {
             "response": "success",
             "message": "Strategy '"+name+"' created",
             "parameters": strategy
         }
+    return resp
+
+@app.post("/prices/{coin}")
+async def coin_prices(coin):
+    print(prices_data)
+    if coin in prices_data['average']:
+        resp = {
+            "response": "success",
+            "message": coin+" price data found",
+            coin: {
+                str(prices_data['average'][coin])
+            }
+        }
+    else:
+        resp = {
+            "response": "error",
+            "message": coin+" price data not found!"
+        }        
     return resp
 
 @app.post("/strategies/list")
@@ -263,11 +290,13 @@ async def active_strategies():
     count = 0
     strategies = []
     for json_file in json_files:
-        with open(sys.path[0]+'/strategies/'+json_file) as j:
-            strategy = json.loads(j.read())
-            if strategy["status"] == 'active':
-                count += 1
-                strategies.append(strategy)
+        with open(sys.path[0]+'/history/'+json_file) as j:
+            history = json.loads(j.read())
+        if history["status"] == 'active':
+            with open(sys.path[0]+'/strategies/'+json_file) as j:
+                strategy = json.loads(j.read())
+            count += 1
+            strategies.append(strategy)
     resp = {
         "response": "success",
         "message": str(count)+" strategies active",
@@ -406,9 +435,9 @@ async def run_strategy(strategy_name):
             strategy = json.loads(f.read())
         with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
             history = json.loads(f.read())
-        if strategy['type'] == "margin":
+        if strategy['strategy_type'] == "margin":
             #result = botlib.run_margin_strategy(strategy)
-            strategy.update({"status":"active"})
+            history.update({"status":"active"})
             # init balance datas
             balance_deltas = {}
             for rel in strategy["rel_list"]:
@@ -430,18 +459,18 @@ async def run_strategy(strategy_name):
                     "balance_deltas": balance_deltas,
                 }})
             history.update({"sessions":sessions})
-            with open("history/"+strategy_name, 'w+') as f:
+            with open("history/"+strategy_name+".json", 'w+') as f:
                 f.write(json.dumps(history))
-            with open("strategies/"+strategy_name, 'w+') as f:
+            with open("strategies/"+strategy_name+".json", 'w+') as f:
                 f.write(json.dumps(strategy))
             resp = {
                 "response": "success",
-                "message": "Strategy '"+strategy['type']+"' started!",
+                "message": "Strategy '"+strategy['name']+"' started!",
             }
             pass
         elif strategy['type'] == "arbritage":
             #result = botlib.run_arb_strategy(strategy) TO THREAD
-            strategy.update({"status":"active"})
+            history.update({"status":"active"})
             # init balance datas
             balance_deltas = {}
             for rel in strategy["rel_list"]:
@@ -463,33 +492,39 @@ async def run_strategy(strategy_name):
                     "balance_deltas": balance_deltas,
                 }})
             history.update({"sessions":sessions})
-            with open("history/"+strategy_name, 'w+') as f:
+            print(history)
+            with open("history/"+strategy_name+".json", 'w+') as f:
                 f.write(json.dumps(history))
-            with open("strategies/"+strategy_name, 'w+') as f:
+            with open("strategies/"+strategy_name+".json", 'w+') as f:
                 f.write(json.dumps(strategy))
             resp = {
                 "response": "success",
-                "message": "Strategy '"+strategy['type']+"' started",
+                "message": "Strategy '"+strategy['name']+"' started",
             }
             pass
         else:
             resp = {
                 "response": "error",
-                "message": "Strategy '"+strategy['type']+"' not found!"
+                "message": "Strategy '"+strategy['name']+"' not found!"
             }
     else:
         resp = {
             "response": "error",
-            "message": "Strategy '"+strategy_name+"' not found!"
+            "message": "Strategy '"+strategy['name']+"' not found!"
         }
     return resp
 
+
+
+def main():
+   # bot_thread = threading.Thread(target=bot_loop, args=())
+   # prices_thread = threading.Thread(target=prices_loop, args=())
+   pass
 
 if __name__ == "__main__":
     format = "%(asctime)s: %(message)s"
     logging.basicConfig(format=format, level=logging.INFO,
                         datefmt="%H:%M:%S")
-    bot_thread = threading.Thread(target=bot_loop, args=())
 '''
 method: start_trade strategy: marketmaking``margin: 10 tickers_base: [BTC, KMD] tickers_rel: [VRSC]
 method: get_trading_status -> result: success list_of_strategies_working: [1,2,3]
