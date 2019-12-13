@@ -85,6 +85,7 @@ for folder in config_folders:
     if not os.path.exists(folder):
         os.makedirs(folder)
 bot_data = {}
+orderbook_data = {}
 prices_data = {
     "binance":{
 
@@ -169,7 +170,7 @@ class price_update_thread(object):
     def run(self):
         global prices_data
         while True:
-            prices_data = priceslib.get_prices_data()
+            prices_data = priceslib.prices_loop()
             time.sleep(self.interval)
 
 prices_thread = price_update_thread()
@@ -189,6 +190,20 @@ class bot_update_thread(object):
 
 bot_thread = bot_update_thread()
 
+class orderbook_update_thread(object):
+    def __init__(self, interval=30):                  # 20 min, TODO: change to var
+        self.interval = interval
+        thread = Thread(target=self.run, args=())
+        thread.daemon = True                            # Daemonize thread
+        thread.start()                                  # Start the execution
+
+    def run(self):
+        while True:
+            global orderbook_data
+            orderbook_data = botlib.orderbook_loop(mm2_ip, mm2_rpc_pass)
+            time.sleep(self.interval)
+
+orderbook_thread = orderbook_update_thread()
 
 
 ### BOT LOGIC FUNCTIONS
@@ -277,6 +292,14 @@ async def list_coins():
         "message": "Coins list found",
         "coins_list": coinslib.cointags
     }
+    return resp
+
+@app.get("/orderbook")
+async def show_orderbook():
+    resp = {
+        "response": "success",
+        "orderbook": orderbook_data
+    }        
     return resp
 
 
