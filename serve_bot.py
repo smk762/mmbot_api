@@ -8,8 +8,7 @@ from threading import Thread
 import asyncio
 import logging
 #import sqlite3
-from lib import priceslib
-from lib import rpclib, botlib
+from lib import rpclib, botlib, coinslib, priceslib
 import time
 import json
 import sys
@@ -85,7 +84,7 @@ config_folders = ['strategies', 'history']
 for folder in config_folders:
     if not os.path.exists(folder):
         os.makedirs(folder)
-
+bot_data = {}
 prices_data = {
     "binance":{
 
@@ -161,7 +160,7 @@ if bn_key == '' or bn_secret == '':
 ### THREAD Classes
 
 class price_update_thread(object):
-    def __init__(self, interval=120):
+    def __init__(self, interval=60):
         self.interval = interval
         thread = Thread(target=self.run, args=())
         thread.daemon = True                            # Daemonize thread
@@ -176,7 +175,7 @@ class price_update_thread(object):
 prices_thread = price_update_thread()
 
 class bot_update_thread(object):
-    def __init__(self, interval=1200):                  # 20 min, TODO: change to var
+    def __init__(self, interval=90):                  # 20 min, TODO: change to var
         self.interval = interval
         thread = Thread(target=self.run, args=())
         thread.daemon = True                            # Daemonize thread
@@ -184,7 +183,8 @@ class bot_update_thread(object):
 
     def run(self):
         while True:
-            prices_data = botlib.bot_loop()
+            global bot_data
+            bot_data = botlib.bot_loop(prices_data)
             time.sleep(self.interval)
 
 bot_thread = bot_update_thread()
@@ -211,8 +211,8 @@ async def get_balance(coin: str = Field(None, description='Enter Coin Ticker', m
 @app.post("/strategies/create")
 async def create_strategy(name: str,
                           strategy_type: str,
-                          rel_list: List[str], 
-                          base_list: List[str],
+                          rel_list: str, 
+                          base_list: str,
                           margin: float = 5,
                           refresh_interval: int = 30,
                           balance_pct: int = 100,
@@ -224,41 +224,64 @@ async def create_strategy(name: str,
         }
     else:
         strat_file = name+'.json'
-        strategy = {
-            "name":name,
-            "strategy_type":strategy_type,
-            "rel_list":rel_list,
-            "base_list":base_list,
-            "margin":margin,
-            "refresh_interval":refresh_interval,
-            "balance_pct":balance_pct,
-            "cex_countertrade":cex_countertrade
-        }
-        with open("strategies/"+strat_file, 'w+') as f:
-            f.write(json.dumps(strategy))
+        rel_list = rel_list.split(',')
+        base_list = base_list.split(',')
+        for coin in set(list(rel_list+base_list)):
+            if coin not in coinslib.cointags:
+                resp = {
+                    "response": "error",
+                    "message": "'"+coin+"' is an invalid ticker. Check /coins/list for valid options, and enter them as comma delimiter with no spaces."
+                }
+                break                
+            else:
+                strategy = {
+                    "name":name,
+                    "strategy_type":strategy_type,
+                    "rel_list":rel_list,
+                    "base_list":base_list,
+                    "margin":margin,
+                    "refresh_interval":refresh_interval,
+                    "balance_pct":balance_pct,
+                    "cex_countertrade":cex_countertrade
+                }
+                with open("strategies/"+strat_file, 'w+') as f:
+                    f.write(json.dumps(strategy))
 
-        if not os.path.exists(sys.path[0]+"/history/"+name+".json"):
-            history = { 
-                "num_sessions":0,
-                "sessions":{},
-                "last_refresh": 0,
-                "total_mm2_swaps_completed": 0,
-                "total_cex_swaps_completed": 0,
-                "total_balance_deltas": {},
-                "status":"inactive"
-            }
-            with open("history/"+name+".json", 'w+') as f:
-                f.write(json.dumps(history))
-        resp = {
-            "response": "success",
-            "message": "Strategy '"+name+"' created",
-            "parameters": strategy
-        }
+                if not os.path.exists(sys.path[0]+"/history/"+name+".json"):
+                    strategy_coins = list(set(rel_list+base_list))
+                    balance_deltas = {}
+                    for strategy_coin in strategy_coins:
+                        balance_deltas.update({strategy_coin:0})
+                    history = { 
+                        "num_sessions":0,
+                        "sessions":{},
+                        "last_refresh": 0,
+                        "total_mm2_swaps_completed": 0,
+                        "total_cex_swaps_completed": 0,
+                        "total_balance_deltas": balance_deltas,
+                        "status":"inactive"
+                    }
+                    with open("history/"+name+".json", 'w+') as f:
+                        f.write(json.dumps(history))
+                resp = {
+                    "response": "success",
+                    "message": "Strategy '"+name+"' created",
+                    "parameters": strategy
+                }
     return resp
+
+@app.get("/coins/list")
+async def list_coins():
+    resp = {
+        "response": "success",
+        "message": "Coins list found",
+        "coins_list": coinslib.cointags
+    }
+    return resp
+
 
 @app.post("/prices/{coin}")
 async def coin_prices(coin):
-    print(prices_data)
     if coin in prices_data['average']:
         resp = {
             "response": "success",
@@ -342,44 +365,7 @@ def cancel_strategy(history):
     session.update({"balance_deltas":balance_deltas})
     sessions.update({str(len(history['sessions'])):session})
     history.update({"sessions":sessions})
-
-@app.post("/strategies/stop/{strategy_name}")
-async def stop_strategy(strategy_name):
-    strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
-    if strategy_name == 'all':
-        histories = []
-        for strategy in strategies:
-            with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
-                history = json.loads(f.read())
-            if history['status'] == 'active':
-                history.update({"status":"inactive"})
-                history = cancel_strategy(history)
-                with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
-                    f.write(json.dumps(history))
-                histories.append(history)
-        resp = {
-            "response": "success",
-            "message": "All active strategies stopped!",
-            "status": histories
-        }        
-    elif strategy_name not in strategies:
-        resp = {
-            "response": "error",
-            "message": "Strategy '"+strategy_name+"' not found!"
-        }
-    else:
-        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
-            history = json.loads(f.read())
-        history.update({"status":"inactive"})
-
-        with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
-            f.write(json.dumps(history))
-        resp = {
-            "response": "success",
-            "message": strategy_name+" stopped",
-            "status": history
-        }
-    return resp
+    return history
 
 @app.post("/strategies/history/{strategy_name}")
 async def strategy_history(strategy_name):
@@ -405,26 +391,15 @@ async def strategy_history(strategy_name):
             "response": "error",
             "message": "Strategy '"+strategy_name+"' not found!"
         }
-    elif not os.path.exists(sys.path[0]+"/history/"+strategy_name+".json"):
-        history = { 
-            "num_sessions":{},
-            "sessions":{},
-            "last_refresh": 0,
-            "total_mm2_swaps_completed": {},
-            "total_cex_swaps_completed": {},
-            "total_balance_deltas": {},
-            "status":"inactive"
-        }
+    else:
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+            history = json.loads(f.read())
         resp = {
             "response": "success",
             "message": "History found for strategy: "+strategy_name,
             "history": history
-        }        
-        with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
-            f.write(json.dumps(resp))
-    else:
-        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
-            resp = json.loads(f.read())
+        }
+    print(bot_data)
     return resp
 
 @app.post("/strategies/run/{strategy_name}")
@@ -492,7 +467,6 @@ async def run_strategy(strategy_name):
                     "balance_deltas": balance_deltas,
                 }})
             history.update({"sessions":sessions})
-            print(history)
             with open("history/"+strategy_name+".json", 'w+') as f:
                 f.write(json.dumps(history))
             with open("strategies/"+strategy_name+".json", 'w+') as f:
@@ -511,6 +485,45 @@ async def run_strategy(strategy_name):
         resp = {
             "response": "error",
             "message": "Strategy '"+strategy['name']+"' not found!"
+        }
+    return resp
+
+
+@app.post("/strategies/stop/{strategy_name}")
+async def stop_strategy(strategy_name):
+    strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    if strategy_name == 'all':
+        histories = []
+        for strategy in strategies:
+            with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+                history = json.loads(f.read())
+            if history['status'] == 'active':
+                history.update({"status":"inactive"})
+                history = cancel_strategy(history)
+                with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
+                    f.write(json.dumps(history))
+                histories.append(history)
+        resp = {
+            "response": "success",
+            "message": "All active strategies stopped!",
+            "status": histories
+        }        
+    elif strategy_name not in strategies:
+        resp = {
+            "response": "error",
+            "message": "Strategy '"+strategy_name+"' not found!"
+        }
+    else:
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
+            history = json.loads(f.read())
+        history.update({"status":"inactive"})
+
+        with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
+            f.write(json.dumps(history))
+        resp = {
+            "response": "success",
+            "message": "Strategy '"+strategy_name+"' stopped",
+            "status": history
         }
     return resp
 
