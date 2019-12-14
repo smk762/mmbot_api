@@ -4,7 +4,7 @@ import sys
 import json
 import time
 import requests
-from . import rpclib, priceslib
+from . import rpclib, priceslib, binance_api
 
 def start_mm2_bot_loop(creds, buy_coins, sell_coins, cancel_previous, trade_max):
     for base in sell_coins:
@@ -111,6 +111,46 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, ):
     return orderbook_data
 
 
+def balances_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, prices_data):
+    print("starting balances loop")
+    strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    active_coins = []
+    quoteassets = []
+    for strategy_name in strategies:
+        with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
+            strategy = json.loads(f.read())
+            active_coins += strategy['rel_list']
+            active_coins += strategy['base_list']
+    active_coins = list(set(active_coins))
+
+    balances_data = {
+        "mm2": {},
+        "binance": {}
+    }
+    binance_balances = binance_api.get_binance_balances(bn_key, bn_secret)
+    for coin in active_coins:
+        # get binance balance
+        if coin in binance_balances:
+            available = binance_balances[coin]['available']
+            balances_data["binance"].update({coin:available})
+        # get mm2 balance        
+        balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, coin).json()
+        balance = balance_info['balance']
+        locked = balance_info['locked_by_swaps']
+        available = float(balance) - float(locked)
+        balances_data["mm2"].update({coin:available})
+        if coin in prices_data['binance']:
+            quoteassets += list(prices_data['binance'][coin].keys())
+    quoteassets = list(set(quoteassets))
+    for coin in quoteassets:
+        if coin in prices_data['binance'] and coin not in balances_data:
+            available = binance_balances[coin]['available']
+            balances_data["binance_quote_assets"].update({coin:available})
+    print("balances loop completed")
+    return balances_data
+    # TODO: test this with API keys active
+
+
 ## Use orderbook and prices data to identigy aritrage opportunities
 
 
@@ -118,21 +158,18 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, ):
 def run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy):
     orderbook_data = orderbook_loop(mm2_ip, mm2_rpc_pass)
     prices_data = priceslib.prices_loop()
+    # check balances
+    balances = {}
     for base in base_list:
         for rel in rel_list:
             if base != rel:
                 # get binance price
-                print("Binance Price: "+str())
+                prices = priceslib.get_binance_price(base, rel, prices_data)
+                if 'direct' in prices:
+                    print("Binance Price (direct): "+str(prices['direct']))
+                if 'indirect' in prices:
+                    for quote in prices['indirect']:
+                        print("Binance Price (indirect via "+quote+"): "+str(prices['indirect'][quote]))
+                print("---------------------------------------------------------")
             # check if any mm2 orders under binance price
             pass
-
-    {
-        "name":name,
-        "strategy_type":strategy_type,
-        "rel_list":rel_list,
-        "base_list":base_list,
-        "margin":margin,
-        "refresh_interval":refresh_interval,
-        "balance_pct":balance_pct,
-        "cex_countertrade":cex_countertrade
-    }

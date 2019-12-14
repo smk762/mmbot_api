@@ -88,6 +88,7 @@ for folder in config_folders:
         os.makedirs(folder)
 bot_data = {}
 orderbook_data = {}
+balances_data = {}
 prices_data = {
     "binance":{
 
@@ -207,6 +208,21 @@ class orderbook_update_thread(object):
 
 orderbook_thread = orderbook_update_thread()
 
+class balances_update_thread(object):
+    def __init__(self, interval=60):                  # 20 min, TODO: change to var
+        self.interval = interval
+        thread = Thread(target=self.run, args=())
+        thread.daemon = True                            # Daemonize thread
+        thread.start()                                  # Start the execution
+
+    def run(self):
+        while True:
+            global balance_data
+            balance_data = botlib.balances_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, prices_data)
+            time.sleep(self.interval)
+
+balance_thread = balances_update_thread()
+
 ### API CALLS
 
 app = FastAPI()
@@ -214,6 +230,11 @@ app = FastAPI()
 @app.get("/")
 async def root():
     return {"message": "Welcome to Antara Markerbot API. See /docs for all methods"}
+
+@app.post("/all_balances")
+async def all_balances():
+    global balance_data
+    return balance_data
 
 @app.post("/balance/{coin}")
 async def get_balance(coin: str = Field(None, description='Enter Coin Ticker', max_length=6)):
