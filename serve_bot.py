@@ -303,7 +303,17 @@ async def show_orderbook():
 
 @app.post("/prices/{coin}")
 async def coin_prices(coin):
-    if coin in prices_data['average']:
+    coin = coin.upper()
+    if coin == 'ALL':
+
+        resp = {
+            "response": "success",
+            "message": coin+" price data found",
+            "all_price_data": prices_data,
+        }
+
+
+    elif coin in prices_data['average']:
         resp = {
             "response": "success",
             "message": coin+" price data found",

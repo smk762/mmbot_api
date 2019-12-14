@@ -111,6 +111,7 @@ def get_paprika_price(coin_id):
     return r
 
 def prices_loop():
+    # source > quoteasset > baseasset
     print("starting prices loop")
     prices_data = {
         "binance":{
@@ -139,7 +140,7 @@ def prices_loop():
                 if baseAsset+quoteAsset in binance_prices:
                     price = float(binance_prices[baseAsset+quoteAsset])
                     invert_price = 1/price
-                    prices_data['binance'][quoteAsset].update({baseAsset:price})
+                    prices_data['binance'][quoteAsset].update({baseAsset:invert_price})
                     prices_data['binance'][baseAsset].update({quoteAsset:price})
 
     paprika_data = requests.get("https://api.coinpaprika.com/v1/tickers?quotes=USD%2CBTC").json()
@@ -154,9 +155,10 @@ def prices_loop():
 
     gecko_data = gecko_prices(",".join(coinslib.gecko_ids), 'usd,btc').json()
     for coin in coinslib.cointags:
-        api_sum_usd = 0
-        api_sum_btc = 0
-        api_sources = []
+        usd_api_sum = 0
+        btc_api_sum = 0
+        btc_api_sources = []
+        usd_api_sources = []
         if coinslib.coin_api_codes[coin]['coingecko_id'] != '':
             prices_data['gecko'].update({
                 coin:{
@@ -164,37 +166,43 @@ def prices_loop():
                     "BTC":gecko_data[coinslib.coin_api_codes[coin]['coingecko_id']]['btc'],
                 }
             })
-            api_sum_usd += prices_data['gecko'][coin]['USD']
-            api_sum_btc += prices_data['gecko'][coin]['BTC']
-            api_sources.append('CoinGecko')
+            usd_api_sum += prices_data['gecko'][coin]['USD']
+            btc_api_sum += prices_data['gecko'][coin]['BTC']
+            btc_api_sources.append('CoinGecko')
+            usd_api_sources.append('CoinGecko')
         if coin in prices_data['paprika']:
-            api_sum_usd += prices_data['paprika'][coin]['USD']
-            api_sum_btc += prices_data['paprika'][coin]['BTC']
-            api_sources.append('CoinPaprika')
+            usd_api_sum += prices_data['paprika'][coin]['USD']
+            btc_api_sum += prices_data['paprika'][coin]['BTC']
+            btc_api_sources.append('CoinPaprika')
+            usd_api_sources.append('CoinPaprika')
         if coin in prices_data['binance']:
             if 'TUSD' in prices_data['binance'][coin]:
-                api_sum_usd += prices_data['binance'][coin]['TUSD']
+                usd_api_sum += prices_data['binance'][coin]['TUSD']
+                usd_api_sources.append('Binance')
             if coin == 'BTC':
-                api_sum_btc += 1
-            else:
-                api_sum_btc += 1/prices_data['binance']['BTC'][coin]
-            api_sources.append('Binance')
-            
-        if len(api_sources) > 0:
-            prices_data['average'].update({
-                coin:{
-                    "USD":api_sum_usd/len(api_sources),
-                    "BTC":api_sum_btc/len(api_sources),
-                    "sources":api_sources
-                }
-            })
+                btc_api_sum += 1
+                btc_api_sources.append('Binance')
+            elif 'BTC' in prices_data['binance'][coin]:
+                btc_api_sum += prices_data['binance'][coin]['BTC']
+                btc_api_sources.append('Binance')
+            elif coin in prices_data['binance']['BTC']:
+                btc_api_sum += 1/prices_data['binance']['BTC'][coin]
+                btc_api_sources.append('Binance')
+
+        if len(usd_api_sources) > 0:
+            usd_ave = usd_api_sum/len(usd_api_sources)
+            btc_ave = btc_api_sum/len(btc_api_sources)
         else:
-            prices_data['average'].update({
-                coin:{
-                    "USD":'No Data',
-                    "BTC":'No Data',
-                    "sources":api_sources
-                }
-            })
+            btc_ave = 'No Data'
+            usd_ave = 'No Data'
+        prices_data['average'].update({
+            coin:{
+                "USD":usd_ave,
+                "BTC":btc_ave,
+                "btc_sources":btc_api_sources,
+                "usd_sources":usd_api_sources
+            }
+        })
+
     print("prices loop completed")
     return prices_data

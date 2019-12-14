@@ -13,27 +13,6 @@ def start_mm2_bot_loop(creds, buy_coins, sell_coins, cancel_previous, trade_max)
                 pass
                     # detect unfinished swaps
 
-def run_margin_strategy(strategy):
-    while True:
-
-        strategy['refresh_interval']
-
-    pass
-
-def run_arb_strategy(strategy):
-
-    pass
-
-    {
-        "name":name,
-        "strategy_type":strategy_type,
-        "rel_list":rel_list,
-        "base_list":base_list,
-        "margin":margin,
-        "refresh_interval":refresh_interval,
-        "balance_pct":balance_pct,
-        "cex_countertrade":cex_countertrade
-    }
 
 def cancel_session_orders(session):
     print("cancelling session orders")
@@ -112,7 +91,7 @@ def bot_loop(mm2_ip, mm2_rpc_pass, prices_data):
     print("bot loop completed")
     return bot_data
 
-def orderbook_loop(node_ip, user_pass):
+def orderbook_loop(mm2_ip, mm2_rpc_pass, ):
     print("starting orderbook loop")
     strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
     active_coins = []
@@ -126,10 +105,29 @@ def orderbook_loop(node_ip, user_pass):
     for base in active_coins:
         for rel in active_coins:
             if base != rel:
-                orderbook = rpclib.orderbook(node_ip, user_pass, base, rel)
+                orderbook = rpclib.orderbook(mm2_ip, mm2_rpc_pass, base, rel)
                 orderbook_data.append(orderbook.json())
     print("orderbook loop completed")
     return orderbook_data
 
 
 ## Use orderbook and prices data to identigy aritrage opportunities
+
+def run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy):
+    orderbook_data = orderbook_loop(mm2_ip, mm2_rpc_pass)
+    prices_data = priceslib.prices_loop()
+    for base in base_list:
+        for rel in rel_list:
+            # check if any mm2 orders under binance price
+            pass
+
+    {
+        "name":name,
+        "strategy_type":strategy_type,
+        "rel_list":rel_list,
+        "base_list":base_list,
+        "margin":margin,
+        "refresh_interval":refresh_interval,
+        "balance_pct":balance_pct,
+        "cex_countertrade":cex_countertrade
+    }
