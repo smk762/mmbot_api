@@ -251,3 +251,4 @@ for coin in coin_api_codes:
     if coin == 'BTC' or coin_api_codes[coin]['coingecko_id'] != '':
         gecko_coins.append(coin)
         gecko_ids.append(coin_api_codes[coin]['coingecko_id'])
+

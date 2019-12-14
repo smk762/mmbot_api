@@ -113,11 +113,16 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, ):
 
 ## Use orderbook and prices data to identigy aritrage opportunities
 
+
+
 def run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy):
     orderbook_data = orderbook_loop(mm2_ip, mm2_rpc_pass)
     prices_data = priceslib.prices_loop()
     for base in base_list:
         for rel in rel_list:
+            if base != rel:
+                # get binance price
+                print("Binance Price: "+str())
             # check if any mm2 orders under binance price
             pass
 

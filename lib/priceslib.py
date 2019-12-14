@@ -206,3 +206,42 @@ def prices_loop():
 
     print("prices loop completed")
     return prices_data
+
+
+def get_binance_price(base, rel, prices_data):
+    # direct
+    prices = {}
+    if base+rel in binance_api.binance_pairs:
+        prices.update({"direct":{
+                base+rel:prices_data['binance'][base][rel],
+                rel+base:1/prices_data['binance'][base][rel]
+             }
+        })
+    elif rel+base in binance_api.binance_pairs:
+        prices.update({"direct":{
+                rel+base:1/prices_data['binance'][base][rel],
+                base+rel:prices_data['binance'][base][rel]
+             }
+        })
+    # indirect via common quote
+    rel_quotes = []
+    base_quotes = []
+    for quote in prices_data['binance']:
+        if base in prices_data['binance'][quote]:
+            rel_quotes.append(quote)
+        if rel in prices_data['binance'][quote]:
+            base_quotes.append(quote)
+    common_quote = list(set(rel_quotes) & set(base_quotes))
+    indirect = {}
+    if len(common_quote) > 0:
+        for q_asset in common_quote:
+            indirect[q_asset] = {}
+            base_price = prices_data['binance'][q_asset][base]
+            rel_price = prices_data['binance'][q_asset][rel]
+            indirect[q_asset].update({rel+base:base_price/rel_price})
+            indirect[q_asset].update({base+rel:rel_price/base_price})
+            indirect[q_asset].update({rel+q_asset:rel_price})
+            indirect[q_asset].update({base+q_asset:base_price})
+        prices.update({"indirect":indirect})
+    #TODO: calc fees
+    return prices

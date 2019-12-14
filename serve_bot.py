@@ -301,6 +301,19 @@ async def show_orderbook():
     return resp
 
 
+@app.post("/binance_prices/{base}/{rel}")
+async def coin_prices(base, rel):
+    base = base.upper()
+    rel = rel.upper()
+    prices = priceslib.get_binance_price(base, rel, prices_data)
+    resp = {
+        "response": "success",
+        "message": base+"/"+rel+" price data found",
+        "binance_prices": prices
+    }
+    
+    return prices
+
 @app.post("/prices/{coin}")
 async def coin_prices(coin):
     coin = coin.upper()
