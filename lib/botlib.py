@@ -105,37 +105,40 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, ):
     for base in active_coins:
         for rel in active_coins:
             if base != rel:
-                orderbook = rpclib.orderbook(mm2_ip, mm2_rpc_pass, base, rel).json()
-                asks = []
-                bids = []
-                for order in orderbook['asks']:
-                    ask = {
-                            "base": base,
-                            "rel": rel,
-                            "price": order['price'],
-                            "max_volume":order['maxvolume'],
-                            "age":order['age']
-                    }
-                    asks.append(ask)
-                for order in orderbook['bids']:
-                    bid = {
-                            "base": base,
-                            "rel": rel,
-                            "price": order['price'],
-                            "max_volume":order['maxvolume'],
-                            "age":order['age']
-                    }
-                    bids.append(bid)
-                orderbook_pair = {
-                    base+rel: {
-                        "asks":asks,
-                        "bids":bids
-                    }
-                }
-
+                orderbook_pair = get_mm2_pair_orderbook(mm2_ip, mm2_rpc_pass, base, rel)
                 orderbook_data.append(orderbook_pair)
     print("orderbook loop completed")
     return orderbook_data
+
+def get_mm2_pair_orderbook(mm2_ip, mm2_rpc_pass, base, rel):
+    orderbook = rpclib.orderbook(mm2_ip, mm2_rpc_pass, base, rel).json()
+    asks = []
+    bids = []
+    for order in orderbook['asks']:
+        ask = {
+                "base": base,
+                "rel": rel,
+                "price": order['price'],
+                "max_volume":order['maxvolume'],
+                "age":order['age']
+        }
+        asks.append(ask)
+    for order in orderbook['bids']:
+        bid = {
+                "base": base,
+                "rel": rel,
+                "price": order['price'],
+                "max_volume":order['maxvolume'],
+                "age":order['age']
+        }
+        bids.append(bid)
+    orderbook_pair = {
+        base+rel: {
+            "asks":asks,
+            "bids":bids
+        }
+    }
+    return orderbook_pair
 
 
 def balances_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, prices_data):
@@ -170,17 +173,14 @@ def balances_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, prices_data):
             quoteassets += list(prices_data['binance'][coin].keys())
     quoteassets = list(set(quoteassets))
     for coin in quoteassets:
-        if coin in prices_data['binance'] and coin not in balances_data and coin in binance_balances[coin]:
+        if coin in prices_data['binance'] and coin not in balances_data and coin in binance_balances:
             available = binance_balances[coin]['available']
             balances_data["binance_quote_assets"].update({coin:available})
     print("balances loop completed")
     return balances_data
     # TODO: test this with API keys active
 
-
 ## Use orderbook and prices data to identigy aritrage opportunities
-
-
 
 def run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy):
     orderbook_data = orderbook_loop(mm2_ip, mm2_rpc_pass)
@@ -200,3 +200,110 @@ def run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy):
                 print("---------------------------------------------------------")
             # check if any mm2 orders under binance price
             pass
+
+def cancel_strategy(history):
+    session = history['sessions'][str(len(history['sessions']))]
+    started_at = session['started']
+    duration = int(time.time()) - started_at
+    session.update({"duration":duration})
+
+    mm2_open_orders = session["mm2_open_orders"]
+    for order_uuid in mm2_open_orders:
+        rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
+    cex_open_orders = session["cex_open_orders"]
+    for order in cex_open_orders:
+        if 'binance' in cex_open_orders:
+            for symbol in cex_open_orders['binance']:
+                order_id = cex_open_orders['binance'][symbol]
+                binance_api.delete_order(bn_key, bn_secret, symbol, order_id)
+
+    mm2_swaps_in_progress = session["mm2_swaps_in_progress"]
+    for swap in mm2_swaps_in_progress:
+        # alreay cancelled, move to completed, and mark as "cancelled while in progress"
+        pass
+    cex_swaps_in_progress = session["cex_swaps_in_progress"]
+    for swap in cex_swaps_in_progress:
+        # alreay cancelled, move to completed, and mark as "cancelled while in progress"
+        pass
+
+    balance_delta_coins = list(session["balance_deltas"].keys())
+    mm2_swaps_completed = session["mm2_swaps_completed"]
+    for swap in mm2_swaps_completed:
+        # calculate deltas
+        pass
+    cex_swaps_completed = session["cex_swaps_completed"]
+    for swap in cex_swaps_completed:
+        # calculate deltas
+        pass
+
+    session.update({"balance_deltas":balance_deltas})
+    sessions.update({str(len(history['sessions'])):session})
+    history.update({"sessions":sessions})
+    return history
+
+def init_history_file(name, strategy_coins):
+    balance_deltas = {}
+    for strategy_coin in strategy_coins:
+        balance_deltas.update({strategy_coin:0})
+    history = { 
+        "num_sessions":0,
+        "sessions":{},
+        "last_refresh": 0,
+        "total_mm2_swaps_completed": 0,
+        "total_cex_swaps_completed": 0,
+        "total_balance_deltas": balance_deltas,
+        "status":"inactive"
+    }
+    with open("history/"+name+".json", 'w+') as f:
+        f.write(json.dumps(history))
+
+def init_strategy_file(name, strategy_type, rel_list, base_list, margin, refresh_interval, balance_pct, cex_list):
+    strategy = {
+        "name":name,
+        "strategy_type":strategy_type,
+        "rel_list":rel_list,
+        "base_list":base_list,
+        "margin":margin,
+        "refresh_interval":refresh_interval,
+        "balance_pct":balance_pct,
+        "cex_countertrade":cex_list
+    }
+    with open("strategies/"+name+'.json', 'w+') as f:
+        f.write(json.dumps(strategy))
+
+    if not os.path.exists(sys.path[0]+"/history/"+name+".json"):
+        strategy_coins = list(set(rel_list+base_list))
+        botlib.init_history_file(name, strategy_coins)
+    resp = {
+        "response": "success",
+        "message": "Strategy '"+name+"' created",
+        "parameters": strategy
+    }
+
+def init_session(strategy_name, strategy, history):
+    history.update({"status":"active"})
+    # init balance datas
+    balance_deltas = {}
+    for rel in strategy["rel_list"]:
+        balance_deltas.update({rel:0})
+    for base in strategy["base_list"]:
+        if base not in strategy["rel_list"]:
+            balance_deltas.update({base:0})
+    # init session
+    sessions = history['sessions']
+    sessions.update({str(len(sessions)):{
+            "started":int(time.time()),
+            "duration":0,
+            "mm2_open_orders": {},
+            "mm2_swaps_in_progress": {},
+            "mm2_swaps_completed": {},
+            "cex_open_orders": {},
+            "cex_swaps_in_progress": {},
+            "cex_swaps_completed": {},
+            "balance_deltas": balance_deltas,
+        }})
+    history.update({"sessions":sessions})
+    with open("history/"+strategy_name+".json", 'w+') as f:
+        f.write(json.dumps(history))
+    with open("strategies/"+strategy_name+".json", 'w+') as f:
+        f.write(json.dumps(strategy))

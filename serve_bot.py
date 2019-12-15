@@ -233,24 +233,28 @@ async def root():
 
 @app.get("/all_balances")
 async def all_balances():
+    """
+    Returns MM2 and CEX balances
+    """
     global balance_data
     return balance_data
 
-@app.get("/balance/{coin}")
-async def get_balance(coin: str = Field(None, description='Enter Coin Ticker', max_length=6)):
-    balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, coin).json()
-    return balance_info
-
-# TODO: add domain validation for cex, tickers, strat_types
 @app.post("/strategies/create")
-async def create_strategy(name: str,
-                          strategy_type: str,
-                          rel_list: str, 
-                          base_list: str,
-                          margin: float = 5,
-                          refresh_interval: int = 30,
-                          balance_pct: int = 100,
-                          cex_countertrade: List[str] = []):
+async def create_strategy(*, name: str, strategy_type: str, rel_list: str, 
+                          base_list: str, margin: float = 5, refresh_interval: int = 30,
+                          balance_pct: int = 100, cex_list: str = 'binance'):
+    """
+    Creates a new trading strategy definition.
+    - **name**: Each strategy must have a name. E.g. KMD
+    - **strategy_type**: A valid strategy name. E.g. Margin
+    - **rel_list**: a comma delimited list of tickers. E.g. KMD,BTC,ETH
+    - **base_list**: a comma delimited list of tickers. E.g. KMD,BTC,ETH
+    - **margin** (float): percentage to set sell orders above market (margin), or buy orders below market (arbitrage). E.g. 5 
+    - **refresh_interval** (integer): time in minutes between refreshing prices and updating orders.
+    - **balance_pct** (integer): percentage of available balance to use for trades. E.g. 100
+    - **base_list**: a comma delimited list of centralised exchanges. E.g. Binance,Coinbase
+
+    """
     valid_strategies = ['margin', 'arbitrage']
     if name == 'all':
         resp = {
@@ -258,58 +262,32 @@ async def create_strategy(name: str,
             "message": "Strategy name 'all' is reserved, use a different name.",
         }
     elif strategy_type in valid_strategies:
-        strat_file = name+'.json'
         rel_list = rel_list.split(',')
         base_list = base_list.split(',')
-        for coin in set(list(rel_list+base_list)):
-            if coin not in coinslib.cointags:
-                resp = {
-                    "response": "error",
-                    "message": "'"+coin+"' is an invalid ticker. Check /coins/list for valid options, and enter them as comma delimiter with no spaces."
-                }
-                break                
-            else:
-                strategy = {
-                    "name":name,
-                    "strategy_type":strategy_type,
-                    "rel_list":rel_list,
-                    "base_list":base_list,
-                    "margin":margin,
-                    "refresh_interval":refresh_interval,
-                    "balance_pct":balance_pct,
-                    "cex_countertrade":cex_countertrade
-                }
-                with open("strategies/"+strat_file, 'w+') as f:
-                    f.write(json.dumps(strategy))
-
-                if not os.path.exists(sys.path[0]+"/history/"+name+".json"):
-                    strategy_coins = list(set(rel_list+base_list))
-                    balance_deltas = {}
-                    for strategy_coin in strategy_coins:
-                        balance_deltas.update({strategy_coin:0})
-                    history = { 
-                        "num_sessions":0,
-                        "sessions":{},
-                        "last_refresh": 0,
-                        "total_mm2_swaps_completed": 0,
-                        "total_cex_swaps_completed": 0,
-                        "total_balance_deltas": balance_deltas,
-                        "status":"inactive"
-                    }
-                    with open("history/"+name+".json", 'w+') as f:
-                        f.write(json.dumps(history))
-                resp = {
-                    "response": "success",
-                    "message": "Strategy '"+name+"' created",
-                    "parameters": strategy
-                }
-        else:
+        cex_list = cex_list.split(',')
+        valid_coins = validatelib.validate_coins(list(set(rel_list+base_list)))
+        if not valid_coins[0]:
             resp = {
                 "response": "error",
-                "message": "Strategy type '"+strategy_type+"' is invalid. Options are: "+str(valid_strategies),
+                "message": "'"+valid_coins[1]+"' is an invalid ticker. Check /coins/list for valid options, and enter them as comma delimiter with no spaces."
+            }
+            return resp
+        if not valid_cex[0]:
+            resp = {
+                "response": "error",
+                "message": "'"+valid_cex[1]+"' is an invalid CEX. Check /cex/list for valid options, and enter them as comma delimiter with no spaces."
+            }
+            return resp
+        botlib.init_strategy_file(name, strategy_type, rel_list, base_list, margin, refresh_interval, balance_pct, cex_list)
+    else:
+        resp = {
+            "response": "error",
+            "message": "Strategy type '"+strategy_type+"' is invalid. Options are: "+str(valid_strategies),
+            "valid_strategies": {
                 "margin": "This strategy will place setprice (sell) orders on mm2 at market price plus margin. On completion of a swap, if Binance keys are valid, a countertrade will be performed at market.",
                 "arbitrage": "This strategy scans the mm2 orderbook periodically. If a trade below market price minus margin is detected, a buy order is submitted. On completion of a swap, if Binance keys are valid, a counter sell will be submitted."
             }
+        }
     return resp
 
 @app.get("/coins/list")
@@ -360,7 +338,6 @@ async def coin_prices(coin):
             "gecko":{coin:prices_data['gecko'][coin]},
             "average":{coin:prices_data['average'][coin]}
         }
-
         resp = {
             "response": "success",
             "message": coin+" price data found",
@@ -402,46 +379,6 @@ async def active_strategies():
         "active_strategies": strategies
     }
     return resp
-
-def cancel_strategy(history):
-    session = history['sessions'][str(len(history['sessions']))]
-    started_at = session['started']
-    duration = int(time.time()) - started_at
-    session.update({"duration":duration})
-
-    mm2_open_orders = session["mm2_open_orders"]
-    for order_uuid in mm2_open_orders:
-        rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
-    cex_open_orders = session["cex_open_orders"]
-    for order in cex_open_orders:
-        if 'binance' in cex_open_orders:
-            for symbol in cex_open_orders['binance']:
-                order_id = cex_open_orders['binance'][symbol]
-                binance_api.delete_order(bn_key, bn_secret, symbol, order_id)
-
-    mm2_swaps_in_progress = session["mm2_swaps_in_progress"]
-    for swap in mm2_swaps_in_progress:
-        # alreay cancelled, move to completed, and mark as "cancelled while in progress"
-        pass
-    cex_swaps_in_progress = session["cex_swaps_in_progress"]
-    for swap in cex_swaps_in_progress:
-        # alreay cancelled, move to completed, and mark as "cancelled while in progress"
-        pass
-
-    balance_delta_coins = list(session["balance_deltas"].keys())
-    mm2_swaps_completed = session["mm2_swaps_completed"]
-    for swap in mm2_swaps_completed:
-        # calculate deltas
-        pass
-    cex_swaps_completed = session["cex_swaps_completed"]
-    for swap in cex_swaps_completed:
-        # calculate deltas
-        pass
-
-    session.update({"balance_deltas":balance_deltas})
-    sessions.update({str(len(history['sessions'])):session})
-    history.update({"sessions":sessions})
-    return history
 
 @app.post("/strategies/history/{strategy_name}")
 async def strategy_history(strategy_name):
@@ -487,71 +424,17 @@ async def run_strategy(strategy_name):
         with open(sys.path[0]+"/history/"+strategy_name+".json", 'r') as f:
             history = json.loads(f.read())
         if strategy['strategy_type'] == "margin":
-            #result = botlib.run_margin_strategy(strategy)
-            history.update({"status":"active"})
-            # init balance datas
-            balance_deltas = {}
-            for rel in strategy["rel_list"]:
-                balance_deltas.update({rel:0})
-            for base in strategy["base_list"]:
-                if base not in strategy["rel_list"]:
-                    balance_deltas.update({base:0})
-            # init session
-            sessions = history['sessions']
-            sessions.update({str(len(sessions)):{
-                    "started":int(time.time()),
-                    "duration":0,
-                    "mm2_open_orders": {},
-                    "mm2_swaps_in_progress": {},
-                    "mm2_swaps_completed": {},
-                    "cex_open_orders": {},
-                    "cex_swaps_in_progress": {},
-                    "cex_swaps_completed": {},
-                    "balance_deltas": balance_deltas,
-                }})
-            history.update({"sessions":sessions})
-            with open("history/"+strategy_name+".json", 'w+') as f:
-                f.write(json.dumps(history))
-            with open("strategies/"+strategy_name+".json", 'w+') as f:
-                f.write(json.dumps(strategy))
+            botlib.init_session(strategy_name, strategy, history)
             resp = {
                 "response": "success",
                 "message": "Strategy '"+strategy['name']+"' started!",
             }
-            pass
         elif strategy['type'] == "arbritage":
-            #result = botlib.run_arb_strategy(strategy) TO THREAD
-            history.update({"status":"active"})
-            # init balance datas
-            balance_deltas = {}
-            for rel in strategy["rel_list"]:
-                balance_deltas.update({rel:0})
-            for base in strategy["base_list"]:
-                if base not in strategy["rel_list"]:
-                    balance_deltas.update({base:0})
-            # init session
-            sessions = history['sessions']
-            sessions.update({str(len(sessions)):{
-                    "started":int(time.time()),
-                    "duration":0,
-                    "mm2_open_orders": {},
-                    "mm2_swaps_in_progress": {},
-                    "mm2_swaps_completed": {},
-                    "cex_open_orders": {},
-                    "cex_swaps_in_progress": {},
-                    "cex_swaps_completed": {},
-                    "balance_deltas": balance_deltas,
-                }})
-            history.update({"sessions":sessions})
-            with open("history/"+strategy_name+".json", 'w+') as f:
-                f.write(json.dumps(history))
-            with open("strategies/"+strategy_name+".json", 'w+') as f:
-                f.write(json.dumps(strategy))
+            botlib.init_session(strategy_name, strategy, history)
             resp = {
                 "response": "success",
                 "message": "Strategy '"+strategy['name']+"' started",
             }
-            pass
         else:
             resp = {
                 "response": "error",
@@ -575,7 +458,7 @@ async def stop_strategy(strategy_name):
                 history = json.loads(f.read())
             if history['status'] == 'active':
                 history.update({"status":"inactive"})
-                history = cancel_strategy(history)
+                history = botlib.cancel_strategy(history)
                 with open(sys.path[0]+"/history/"+strategy_name+".json", 'w+') as f:
                     f.write(json.dumps(history))
                 histories.append(history)
