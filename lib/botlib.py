@@ -155,7 +155,8 @@ def balances_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, prices_data):
 
     balances_data = {
         "mm2": {},
-        "binance": {}
+        "binance": {},
+        "binance_quote_assets": {}
     }
     binance_balances = binance_api.get_binance_balances(bn_key, bn_secret)
     for coin in active_coins:
@@ -273,12 +274,8 @@ def init_strategy_file(name, strategy_type, rel_list, base_list, margin, refresh
 
     if not os.path.exists(sys.path[0]+"/history/"+name+".json"):
         strategy_coins = list(set(rel_list+base_list))
-        botlib.init_history_file(name, strategy_coins)
-    resp = {
-        "response": "success",
-        "message": "Strategy '"+name+"' created",
-        "parameters": strategy
-    }
+        init_history_file(name, strategy_coins)
+    return strategy
 
 def init_session(strategy_name, strategy, history):
     history.update({"status":"active"})

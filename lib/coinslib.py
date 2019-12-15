@@ -252,3 +252,4 @@ for coin in coin_api_codes:
         gecko_coins.append(coin)
         gecko_ids.append(coin_api_codes[coin]['coingecko_id'])
 
+cex_names = ['Binance']

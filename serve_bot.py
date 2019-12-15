@@ -8,7 +8,7 @@ from threading import Thread
 import asyncio
 import logging
 #import sqlite3
-from lib import rpclib, botlib, coinslib, priceslib
+from lib import rpclib, botlib, coinslib, priceslib, validatelib
 import time
 import json
 import sys
@@ -266,6 +266,7 @@ async def create_strategy(*, name: str, strategy_type: str, rel_list: str,
         base_list = base_list.split(',')
         cex_list = cex_list.split(',')
         valid_coins = validatelib.validate_coins(list(set(rel_list+base_list)))
+        valid_cex = validatelib.validate_cex(list(set(cex_list)))
         if not valid_coins[0]:
             resp = {
                 "response": "error",
@@ -278,7 +279,12 @@ async def create_strategy(*, name: str, strategy_type: str, rel_list: str,
                 "message": "'"+valid_cex[1]+"' is an invalid CEX. Check /cex/list for valid options, and enter them as comma delimiter with no spaces."
             }
             return resp
-        botlib.init_strategy_file(name, strategy_type, rel_list, base_list, margin, refresh_interval, balance_pct, cex_list)
+        strategy = botlib.init_strategy_file(name, strategy_type, rel_list, base_list, margin, refresh_interval, balance_pct, cex_list)
+        resp = {
+            "response": "success",
+            "message": "Strategy '"+name+"' created",
+            "parameters": strategy
+        }
     else:
         resp = {
             "response": "error",
@@ -296,6 +302,15 @@ async def list_coins():
         "response": "success",
         "message": "Coins list found",
         "coins_list": coinslib.cointags
+    }
+    return resp
+
+@app.get("/cex/list")
+async def list_cex():
+    resp = {
+        "response": "success",
+        "message": "Cex list found",
+        "cex_list": coinslib.cex_names
     }
     return resp
 

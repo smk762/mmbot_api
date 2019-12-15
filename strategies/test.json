@@ -1,1 +1,0 @@
-{"name": "test", "strategy_type": "margin", "rel_list": ["KMD", "BTC"], "base_list": ["BCH", "RVN"], "margin": 5.0, "refresh_interval": 30, "balance_pct": 100, "cex_countertrade": ["string"]}
