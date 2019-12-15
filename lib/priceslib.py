@@ -111,6 +111,7 @@ def get_paprika_price(coin_id):
     return r
 
 def prices_loop():
+    # TODO: include mm2 price? or do separate?
     # source > quoteasset > baseasset
     print("starting prices loop")
     prices_data = {

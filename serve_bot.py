@@ -231,12 +231,12 @@ app = FastAPI()
 async def root():
     return {"message": "Welcome to Antara Markerbot API. See /docs for all methods"}
 
-@app.post("/all_balances")
+@app.get("/all_balances")
 async def all_balances():
     global balance_data
     return balance_data
 
-@app.post("/balance/{coin}")
+@app.get("/balance/{coin}")
 async def get_balance(coin: str = Field(None, description='Enter Coin Ticker', max_length=6)):
     balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, coin).json()
     return balance_info
@@ -251,12 +251,13 @@ async def create_strategy(name: str,
                           refresh_interval: int = 30,
                           balance_pct: int = 100,
                           cex_countertrade: List[str] = []):
+    valid_strategies = ['margin', 'arbitrage']
     if name == 'all':
         resp = {
             "response": "error",
             "message": "Strategy name 'all' is reserved, use a different name.",
         }
-    else:
+    elif strategy_type in valid_strategies:
         strat_file = name+'.json'
         rel_list = rel_list.split(',')
         base_list = base_list.split(',')
@@ -302,6 +303,13 @@ async def create_strategy(name: str,
                     "message": "Strategy '"+name+"' created",
                     "parameters": strategy
                 }
+        else:
+            resp = {
+                "response": "error",
+                "message": "Strategy type '"+strategy_type+"' is invalid. Options are: "+str(valid_strategies),
+                "margin": "This strategy will place setprice (sell) orders on mm2 at market price plus margin. On completion of a swap, if Binance keys are valid, a countertrade will be performed at market.",
+                "arbitrage": "This strategy scans the mm2 orderbook periodically. If a trade below market price minus margin is detected, a buy order is submitted. On completion of a swap, if Binance keys are valid, a counter sell will be submitted."
+            }
     return resp
 
 @app.get("/coins/list")
@@ -335,7 +343,7 @@ async def coin_prices(base, rel):
     
     return prices
 
-@app.post("/prices/{coin}")
+@app.get("/prices/{coin}")
 async def coin_prices(coin):
     coin = coin.upper()
     if coin == 'ALL':
@@ -343,17 +351,20 @@ async def coin_prices(coin):
         resp = {
             "response": "success",
             "message": coin+" price data found",
-            "all_price_data": prices_data,
+            "price_data": prices_data,
+        }
+    elif coin in prices_data['average']:
+        coin_price_data = {
+            "binance":{coin:prices_data['binance'][coin]},
+            "paprika":{coin:prices_data['paprika'][coin]},
+            "gecko":{coin:prices_data['gecko'][coin]},
+            "average":{coin:prices_data['average'][coin]}
         }
 
-
-    elif coin in prices_data['average']:
         resp = {
             "response": "success",
             "message": coin+" price data found",
-            coin: {
-                str(prices_data['average'][coin])
-            }
+            "price_data": coin_price_data,
         }
     else:
         resp = {
@@ -362,7 +373,7 @@ async def coin_prices(coin):
         }        
     return resp
 
-@app.post("/strategies/list")
+@app.get("/strategies/list")
 async def list_strategies():
     json_files = [ x for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
     strategies = []
@@ -372,7 +383,7 @@ async def list_strategies():
             strategies.append(strategy)
     return strategies
 
-@app.post("/strategies/active")
+@app.get("/strategies/active")
 async def active_strategies():
     json_files = [ x for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
     count = 0

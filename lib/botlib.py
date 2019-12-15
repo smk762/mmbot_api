@@ -105,8 +105,35 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, ):
     for base in active_coins:
         for rel in active_coins:
             if base != rel:
-                orderbook = rpclib.orderbook(mm2_ip, mm2_rpc_pass, base, rel)
-                orderbook_data.append(orderbook.json())
+                orderbook = rpclib.orderbook(mm2_ip, mm2_rpc_pass, base, rel).json()
+                asks = []
+                bids = []
+                for order in orderbook['asks']:
+                    ask = {
+                            "base": base,
+                            "rel": rel,
+                            "price": order['price'],
+                            "max_volume":order['maxvolume'],
+                            "age":order['age']
+                    }
+                    asks.append(ask)
+                for order in orderbook['bids']:
+                    bid = {
+                            "base": base,
+                            "rel": rel,
+                            "price": order['price'],
+                            "max_volume":order['maxvolume'],
+                            "age":order['age']
+                    }
+                    bids.append(bid)
+                orderbook_pair = {
+                    base+rel: {
+                        "asks":asks,
+                        "bids":bids
+                    }
+                }
+
+                orderbook_data.append(orderbook_pair)
     print("orderbook loop completed")
     return orderbook_data
 
@@ -114,7 +141,7 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, ):
 def balances_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, prices_data):
     print("starting balances loop")
     strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
-    active_coins = []
+    active_coins = rpclib.check_active_coins(mm2_ip, mm2_rpc_pass)
     quoteassets = []
     for strategy_name in strategies:
         with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
@@ -143,7 +170,7 @@ def balances_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, prices_data):
             quoteassets += list(prices_data['binance'][coin].keys())
     quoteassets = list(set(quoteassets))
     for coin in quoteassets:
-        if coin in prices_data['binance'] and coin not in balances_data:
+        if coin in prices_data['binance'] and coin not in balances_data and coin in binance_balances[coin]:
             available = binance_balances[coin]['available']
             balances_data["binance_quote_assets"].update({coin:available})
     print("balances loop completed")

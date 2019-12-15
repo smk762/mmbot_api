@@ -285,3 +285,10 @@ def get_mm2_balances(node_ip, user_pass, active_coins):
                 'available':available
             })
     return balances_data
+
+def check_active_coins(node_ip, user_pass):
+    active_cointags = []
+    active_coins = get_enabled_coins(node_ip, user_pass).json()['result']
+    for coin in active_coins:
+        active_cointags.append(coin['ticker'])
+    return active_cointags 
