@@ -433,6 +433,7 @@ async def strategy_history(strategy_name):
 @app.post("/strategies/run/{strategy_name}")
 async def run_strategy(strategy_name):
     strategies = [ x[:-5] for x in os.listdir(sys.path[0]+'/strategies') if x.endswith("json") ]
+    print(strategies)
     if strategy_name in strategies:
         with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
             strategy = json.loads(f.read())
@@ -444,7 +445,7 @@ async def run_strategy(strategy_name):
                 "response": "success",
                 "message": "Strategy '"+strategy['name']+"' started!",
             }
-        elif strategy['type'] == "arbritage":
+        elif strategy['strategy_type'] == "arbitrage":
             botlib.init_session(strategy_name, strategy, history)
             resp = {
                 "response": "success",
@@ -453,7 +454,7 @@ async def run_strategy(strategy_name):
         else:
             resp = {
                 "response": "error",
-                "message": "Strategy '"+strategy['name']+"' not found!"
+                "message": "Strategy type '"+strategy['strategy_type']+"' not recognised!"
             }
     else:
         resp = {
