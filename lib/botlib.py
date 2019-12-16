@@ -35,29 +35,7 @@ def submit_strategy_orders(mm2_ip, mm2_rpc_pass, strategy):
     margin = strategy['margin']
     balance_pct = strategy['balance_pct']
     if strategy['strategy_type'] == 'margin':
-        for base in base_list:
-            for rel in rel_list:
-                if base != rel:
-                    # in case prices data not yet populated
-                    if base in prices_data['average']:
-                        base_btc_price = prices_data['average'][base]['BTC']
-                        rel_btc_price = prices_data['average'][rel]['BTC']
-                        # todo: make fin safe (no float)
-                        rel_price = (base_btc_price/rel_btc_price)*(1+margin/100)
-                        base_balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, base).json()
-                        available_base_balance = float(base_balance_info["balance"]) - float(base_balance_info["locked_by_swaps"])
-                        basevolume = available_base_balance * strategy['balance_pct']/100
-                        print("trade price: "+base+" (base) / "+rel+" (rel) "+str(rel_price)+" volume = "+str(basevolume))
-                        # place new order TODO: check if swap in progress.
-                        if strategy['balance_pct'] != 100:
-                            resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, False, True)
-                        else:
-                            resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, True, True)
-                        print("rpclib.setprice("+mm2_ip+", "+mm2_rpc_pass+", "+base+", "+str(rel)+", "+str(rel_price))
-                        print(resp.json())
-                    else:
-                        print("No price data yet...")
-                        return
+        run_margin_strategy(mm2_ip, mm2_rpc_pass, strategy, prices_data)
     elif strategy['strategy_type'] == 'arbitrage':
         run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy)
 
@@ -193,13 +171,21 @@ def run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy):
     for base in strategy['base_list']:
         for rel in strategy['rel_list']:
             if base != rel:
+                best_price = 999999999999999999999999999999999
                 # get binance price
                 binance_prices = priceslib.get_binance_price(base, rel, prices_data)
+                # TODO: get bid and ask for binance, not just simple price.
                 if 'direct' in binance_prices:
                     print("Binance Price (direct): "+str(binance_prices['direct']))
+                    # TODO: check this for price compare later with direct pair
                 if 'indirect' in binance_prices:
                     for quote in binance_prices['indirect']:
                         print("Binance Price (indirect via "+quote+"): "+str(binance_prices['indirect'][quote]))
+                        price = binance_prices['indirect'][quote][base+rel]
+                        if price < best_price:
+                            best_price = binance_prices['indirect'][quote][base+rel]
+                            best_symbol = quote
+                print("Binance Best Price (via "+quote+"): "+str(best_price))
                 print("mm2 offers: "+base+rel)
                 for pair in orderbook_data:
                     if base+rel in pair:
@@ -207,13 +193,41 @@ def run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy):
                         asks = pair[base+rel]['bids']
                 print("BIDS")
                 for item in bids:
-                    print(item)
+                    mm2_price = float(item['price'])
+                    pct = best_price/mm2_price-1
+                    print(str(item)+"  (pct vs binance best = "+str(pct)+"%)")
                 print("ASKS")
                 for item in asks:
-                    print(item)
+                    mm2_price = float(item['price'])
+                    pct = best_price/mm2_price-1
+                    print(str(item)+"  (pct vs binance best = "+str(pct)+"%)")
                 print("---------------------------------------------------------")
             # check if any mm2 orders under binance price
             pass
+
+def run_margin_strategy(mm2_ip, mm2_rpc_pass, strategy, prices_data):
+    for base in strategy['base_list']:
+        for rel in strategy['rel_list']:
+            if base != rel:
+                # in case prices data not yet populated
+                if base in prices_data['average']:
+                    base_btc_price = prices_data['average'][base]['BTC']
+                    rel_btc_price = prices_data['average'][rel]['BTC']
+                    # todo: make fin safe (no float)
+                    rel_price = (base_btc_price/rel_btc_price)*(1+strategy['margin']/100)
+                    base_balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, base).json()
+                    available_base_balance = float(base_balance_info["balance"]) - float(base_balance_info["locked_by_swaps"])
+                    basevolume = available_base_balance * strategy['balance_pct']/100
+                    print("trade price: "+base+" (base) / "+rel+" (rel) "+str(rel_price)+" volume = "+str(basevolume))
+                    # place new order TODO: check if swap in progress.
+                    if strategy['balance_pct'] != 100:
+                        resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, False, True)
+                    else:
+                        resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, True, True)
+                    print("Setprice Order created: " + str(resp.json()))
+                else:
+                    print("No price data yet...")
+                        
 
 def cancel_strategy(history):
     session = history['sessions'][str(len(history['sessions']))]
