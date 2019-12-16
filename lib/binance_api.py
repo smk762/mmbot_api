@@ -127,7 +127,7 @@ def create_buy_order(api_key, api_secret, ticker_pair, qty, price):
     return r.json()
 
 def create_sell_order(api_key, api_secret, ticker_pair, qty, price):
-    print("Selling "+str(qty)+" "+ticker_pair+" at "+str(price))
+    print("Selling "+str(qty)+" "+ticker_pair+" on Binance at "+str(price))
     path = '/api/v3/order'
     timestamp = int(time.time() * 1000)
     headers = {
@@ -372,7 +372,6 @@ def get_exchange_info():
     supported_binance_pairs = list(set(supported_binance_pairs))
     binance_pairs.sort()
     supported_binance_pairs.sort()
-    print(supported_binance_pairs)
     quoteAssets.sort()
     return binance_pairs, base_asset_info, quoteAssets, binance_pair_info, supported_binance_pairs
 

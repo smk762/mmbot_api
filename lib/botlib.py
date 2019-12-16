@@ -30,7 +30,6 @@ def submit_strategy_orders(mm2_ip, mm2_rpc_pass, strategy):
     prices_data = priceslib.prices_loop()
     print("submitting strategy orders")
     print("Strategy: "+str(strategy))
-    print("Prices data: "+str(prices_data))
     base_list = strategy['base_list']
     rel_list = strategy['rel_list']
     margin = strategy['margin']
@@ -44,7 +43,7 @@ def submit_strategy_orders(mm2_ip, mm2_rpc_pass, strategy):
                         base_btc_price = prices_data['average'][base]['BTC']
                         rel_btc_price = prices_data['average'][rel]['BTC']
                         # todo: make fin safe (no float)
-                        rel_price = (rel_btc_price/base_btc_price)*(1+margin/100)
+                        rel_price = (base_btc_price/rel_btc_price)*(1+margin/100)
                         base_balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, base).json()
                         available_base_balance = float(base_balance_info["balance"]) - float(base_balance_info["locked_by_swaps"])
                         basevolume = available_base_balance * strategy['balance_pct']/100
@@ -53,13 +52,15 @@ def submit_strategy_orders(mm2_ip, mm2_rpc_pass, strategy):
                         if strategy['balance_pct'] != 100:
                             resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, False, True)
                         else:
-                            resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, str(rel), basevolume, str(rel_price), True, True)
+                            resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, True, True)
                         print("rpclib.setprice("+mm2_ip+", "+mm2_rpc_pass+", "+base+", "+str(rel)+", "+str(rel_price))
                         print(resp.json())
-                        pass
                     else:
                         print("No price data yet...")
                         return
+    elif strategy['strategy_type'] == 'arbitrage':
+        run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy)
+
 
 def bot_loop(mm2_ip, mm2_rpc_pass, prices_data):
     print("starting bot loop")
@@ -72,13 +73,14 @@ def bot_loop(mm2_ip, mm2_rpc_pass, prices_data):
             print("Active strategy: "+strategy_name)
             with open(sys.path[0]+"/strategies/"+strategy_name+".json", 'r') as f:
                 strategy = json.loads(f.read())
-            print("History: "+str(history))
-            print(history['last_refresh'])
-            print(str(strategy['refresh_interval']))
-            print(str(time.time()))
             # check refresh interval vs last refresh
-            if history['last_refresh'] == 0 or history['last_refresh'] + strategy['refresh_interval'] < int(time.time()):
-                print("Refreshing strategy: "+strategy_name)
+            print("last_refresh: "+str(history['last_refresh']))
+            print("refresh_interval: "+str(strategy['refresh_interval']*2))
+            print("last + refresh_interval: "+str(strategy['refresh_interval']*2+history['last_refresh']))
+            print(str(strategy['refresh_interval']*2+history['last_refresh'])+" < "+str(int(time.time())))
+            print("now: "+str(int(time.time())))
+            if history['last_refresh'] == 0 or history['last_refresh'] + strategy['refresh_interval']*2 < int(time.time()):
+                print("*** Refreshing strategy: "+strategy_name+" ***")
                 history.update({'last_refresh':int(time.time())})
                 session = history['sessions'][str(len(history['sessions'])-1)]
                 # cancel old orders
@@ -188,16 +190,27 @@ def run_arb_strategy(mm2_ip, mm2_rpc_pass, strategy):
     prices_data = priceslib.prices_loop()
     # check balances
     balances = {}
-    for base in base_list:
-        for rel in rel_list:
+    for base in strategy['base_list']:
+        for rel in strategy['rel_list']:
             if base != rel:
                 # get binance price
-                prices = priceslib.get_binance_price(base, rel, prices_data)
-                if 'direct' in prices:
-                    print("Binance Price (direct): "+str(prices['direct']))
-                if 'indirect' in prices:
-                    for quote in prices['indirect']:
-                        print("Binance Price (indirect via "+quote+"): "+str(prices['indirect'][quote]))
+                binance_prices = priceslib.get_binance_price(base, rel, prices_data)
+                if 'direct' in binance_prices:
+                    print("Binance Price (direct): "+str(binance_prices['direct']))
+                if 'indirect' in binance_prices:
+                    for quote in binance_prices['indirect']:
+                        print("Binance Price (indirect via "+quote+"): "+str(binance_prices['indirect'][quote]))
+                print("mm2 offers: "+base+rel)
+                for pair in orderbook_data:
+                    if base+rel in pair:
+                        bids = pair[base+rel]['asks']
+                        asks = pair[base+rel]['bids']
+                print("BIDS")
+                for item in bids:
+                    print(item)
+                print("ASKS")
+                for item in asks:
+                    print(item)
                 print("---------------------------------------------------------")
             # check if any mm2 orders under binance price
             pass

@@ -103,6 +103,10 @@ def gecko_prices(coin_ids, fiat):
     r = requests.get(url=url, params=params)
     return r
 
+def coinspot_prices():
+    r = requests.get('https://www.coinspot.com.au/pubapi/latest')
+    return r
+
 # TODO: parse https://api.coinpaprika.com/v1/coins for supported coins api-codes
 def get_paprika_price(coin_id):
     #print("getting paprika api prices")
@@ -128,6 +132,7 @@ def prices_loop():
 
         }
     }
+
     binance_data = requests.get("https://api.binance.com/api/v1/ticker/allPrices").json()
     binance_prices = {}
     for item in binance_data:
