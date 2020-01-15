@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 import os
-import sys
 import json
 import time
 import requests
-import subprocess
 from os.path import expanduser
-# from . import coinslib, binance_api
-
-cwd = os.getcwd()
-script_path = sys.path[0]
-home = expanduser("~")
+from . import coinslib
 
 maker_success_events = ['Started', 'Negotiated', 'TakerFeeValidated', 'MakerPaymentSent', 'TakerPaymentReceived', 'TakerPaymentWaitConfirmStarted',
                         'TakerPaymentValidatedAndConfirmed', 'TakerPaymentSpent', 'Finished']
@@ -114,10 +108,10 @@ def help_mm2(node_ip, user_pass):
     r = requests.post(node_ip, json=params)
     return r.text
 
-def import_swaps(node_ip, user_pass, coin):
+def import_swaps(node_ip, user_pass, swaps):
     params = {'userpass': user_pass,
               'method': 'import_swaps',
-              'swaps': swaps
+              'swaps': [swaps]
               }
     r = requests.post(node_ip,json=params)
     return r
@@ -128,6 +122,22 @@ def my_balance(node_ip, user_pass, cointag):
               'coin': cointag,}
     r = requests.post(node_ip, json=params)
     return r
+
+def all_balances(node_ip, user_pass):
+  balances = []
+  active_coins = check_active_coins(node_ip, user_pass)
+  for coin in active_coins:
+    resp = my_balance(node_ip, user_pass, coin).json()
+    balances.append(resp)
+    time.sleep(0.03)
+  return balances
+
+def all_addresses(node_ip, user_pass):
+  addresses = {}
+  balances = all_balances(node_ip, user_pass)
+  for item in balances:
+    addresses.update({item['coin']:item['address']})
+  return addresses
 
 def my_orders(node_ip, user_pass):
     params = {'userpass': user_pass, 'method': 'my_orders',}
@@ -292,3 +302,36 @@ def check_active_coins(node_ip, user_pass):
     for coin in active_coins:
         active_cointags.append(coin['ticker'])
     return active_cointags 
+
+
+
+def get_kmd_mm2_price(node_ip, user_pass, coin):
+    try:
+        #print("getting kmd mm2 price for "+coin)
+        kmd_orders = orderbook(node_ip, user_pass, coin, 'KMD').json()
+        kmd_value = 0
+        min_kmd_value = 999999999999999999
+        total_kmd_value = 0
+        max_kmd_value = 0
+        kmd_volume = 0
+        num_asks = len(kmd_orders['asks'])
+        for asks in kmd_orders['asks']:
+            kmd_value = float(asks['maxvolume']) * float(asks['price'])
+            if kmd_value < min_kmd_value:
+                min_kmd_value = kmd_value
+            elif kmd_value > max_kmd_value:
+                max_kmd_value = kmd_value
+            total_kmd_value += kmd_value
+            kmd_volume += float(asks['maxvolume'])
+        if num_asks > 0:
+            median_kmd_value = total_kmd_value/kmd_volume
+        else:
+            min_kmd_value = 'No Data'
+            median_kmd_value = 'No Data'
+            max_kmd_value = 'No Data'
+        return min_kmd_value, median_kmd_value, max_kmd_value
+    except:
+        min_kmd_value = 'No Data'
+        median_kmd_value = 'No Data'
+        max_kmd_value = 'No Data'
+        return min_kmd_value, median_kmd_value, max_kmd_value

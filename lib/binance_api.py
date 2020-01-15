@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 import os
-from os.path import expanduser
 import time
 import json
 import hmac
 import hashlib
 import requests
-import sys
+from os.path import expanduser
 from urllib.parse import urljoin, urlencode
 from . import coinslib
 
-# Get and set config
-cwd = os.getcwd()
-home = expanduser("~")
 
 # from https://code.luasoftware.com/tutorials/cryptocurrency/python-connect-to-binance-api/
+
+# fee = 0.1% or less (using bnb or large volume)
 
 base_url = 'https://api.binance.com'
 
@@ -39,7 +37,6 @@ def get_serverTime():
     url = urljoin(base_url, path)
     r = requests.get(url, params=params)
     if r.status_code == 200:
-        # print(json.dumps(r.json(), indent=2))
         data = r.json()
         print(f"diff={timestamp - data['serverTime']}ms")
     else:
@@ -55,7 +52,12 @@ def get_price(api_key, ticker_pair):
     }
     url = urljoin(base_url, path)
     r = requests.get(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
+    elif r.status_code == 400:
+        return r.json()
 
 def get_historicalTrades(api_key, ticker_pair):
     path = '/api/v3/historicalTrades'
@@ -67,7 +69,10 @@ def get_historicalTrades(api_key, ticker_pair):
     }
     url = urljoin(base_url, path)
     r = requests.get(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
 
 
 def get_depth(api_key, ticker_pair, limit):
@@ -100,9 +105,15 @@ def get_open_orders(api_key, api_secret):
     params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
     url = urljoin(base_url, path)
     r = requests.get(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
+    else:
+        return r.json()
 
 def create_buy_order(api_key, api_secret, ticker_pair, qty, price):
+    print("Buying "+str(round_to_step(ticker_pair, qty))+" "+ticker_pair+" on Binance at "+str(round_to_tick(ticker_pair, price)))
     path = '/api/v3/order'
     timestamp = int(time.time() * 1000)
     headers = {
@@ -113,8 +124,8 @@ def create_buy_order(api_key, api_secret, ticker_pair, qty, price):
         'side': 'BUY',
         'type': 'LIMIT',
         'timeInForce': 'GTC',
-        'quantity': qty,
-        'price': price,
+        'quantity': round_to_step(ticker_pair, qty),
+        'price': round_to_tick(ticker_pair, price),
         'recvWindow': 5000,
         'timestamp': timestamp
     }
@@ -124,10 +135,16 @@ def create_buy_order(api_key, api_secret, ticker_pair, qty, price):
 
     url = urljoin(base_url, path)
     r = requests.post(url, headers=headers, params=params)
-    return r.json()
+    print(r.json())
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
+    else:
+        return r.json()
 
 def create_sell_order(api_key, api_secret, ticker_pair, qty, price):
-    print("Selling "+str(qty)+" "+ticker_pair+" on Binance at "+str(price))
+    print("Selling "+str(round_to_step(ticker_pair, qty))+" "+ticker_pair+" on Binance at "+str(round_to_tick(ticker_pair, price)))
     path = '/api/v3/order'
     timestamp = int(time.time() * 1000)
     headers = {
@@ -138,8 +155,8 @@ def create_sell_order(api_key, api_secret, ticker_pair, qty, price):
         'side': 'SELL',
         'type': 'LIMIT',
         'timeInForce': 'GTC',
-        'quantity': qty,
-        'price': price,
+        'quantity': round_to_step(ticker_pair, qty),
+        'price': round_to_tick(ticker_pair, price),
         'recvWindow': 5000,
         'timestamp': timestamp
     }
@@ -147,9 +164,13 @@ def create_sell_order(api_key, api_secret, ticker_pair, qty, price):
     params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
     url = urljoin(base_url, path)
     r = requests.post(url, headers=headers, params=params)
-    return r.json()
-
-
+    print(r.json())
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
+    else:
+        return r.json()
 
 def create_buy_order_at_market(api_key, api_secret, ticker_pair, qty):
     path = '/api/v3/order'
@@ -171,7 +192,10 @@ def create_buy_order_at_market(api_key, api_secret, ticker_pair, qty):
 
     url = urljoin(base_url, path)
     r = requests.post(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
 
 def create_sell_order_at_market(api_key, api_secret, ticker_pair, qty):
     path = '/api/v3/order'
@@ -191,7 +215,10 @@ def create_sell_order_at_market(api_key, api_secret, ticker_pair, qty):
     params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
     url = urljoin(base_url, path)
     r = requests.post(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
 
 
 
@@ -209,7 +236,10 @@ def get_account_info(api_key, api_secret):
     params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
     url = urljoin(base_url, path)
     r = requests.get(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
 
 def get_order(api_key, api_secret, ticker_pair, order_id):
     path = '/api/v3/order'
@@ -230,6 +260,9 @@ def get_order(api_key, api_secret, ticker_pair, order_id):
     r = requests.get(url, headers=headers, params=params)
     if r.status_code == 200:
         return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
+
 
 def delete_order(api_key, api_secret, ticker_pair, order_id):
     path = '/api/v3/order'
@@ -269,7 +302,31 @@ def get_deposit_addr(api_key, api_secret, asset):
     params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
     url = urljoin(base_url, path)
     r = requests.get(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
+
+# Only returns from single symbol :(
+def get_binance_orders_history(api_key, api_secret, symbol):
+    path = '/api/v3/allOrders'
+    timestamp = int(time.time() * 1000)
+    headers = {
+        'X-MBX-APIKEY': api_key
+    }
+    params = {
+        'timestamp': timestamp,
+        'symbol': symbol
+    }
+    query_string = urlencode(params)
+    params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
+    url = urljoin(base_url, path)
+    r = requests.get(url, headers=headers, params=params)
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
+    
 
 # Returns error 500 at the moment
 def asset_detail(api_key, api_secret):
@@ -285,7 +342,29 @@ def asset_detail(api_key, api_secret):
     params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
     url = urljoin(base_url, path)
     r = requests.post(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
+
+
+def recent_trades(api_key, api_secret):
+    path = '/api/v3/trades'
+    timestamp = int(time.time() * 1000)
+    headers = {
+        'X-MBX-APIKEY': api_key
+    }
+    params = {
+        'timestamp': timestamp
+    }
+    query_string = urlencode(params)
+    params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
+    url = urljoin(base_url, path)
+    r = requests.post(url, headers=headers, params=params)
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
 
 def withdraw(api_key, api_secret, asset, addr, amount):
     path = '/wapi/v3/withdraw.html'
@@ -303,11 +382,22 @@ def withdraw(api_key, api_secret, asset, addr, amount):
     params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
     url = urljoin(base_url, path)
     r = requests.post(url, headers=headers, params=params)
-    return r.json()
+    if r.status_code == 200:
+        return r.json()
+    elif r.status_code == 401:
+        return {"Error: Unauthorised"}
 
 def round_to_step(symbol, qty):
-    stepSize = binance_pair_info[symbol]['stepSize']
-    return round(float(qty)/float(stepSize))*float(stepSize)
+    stepSize = '{:.8f}'.format(binance_pair_info[symbol]['stepSize'])
+    precision = str(stepSize).replace('.','').find('1')
+    new_qty = '{:.8f}'.format(round(float(qty),precision))
+    return new_qty
+
+def round_to_tick(symbol, price):
+    tickSize = '{:.8f}'.format(binance_pair_info[symbol]['tickSize'])
+    precision = str(tickSize).replace('.','').find('1')
+    new_price = '{:.8f}'.format(round(float(price),precision))
+    return new_price
 
 def get_exchange_info():
     resp = requests.get("https://api.binance.com/api/v1/exchangeInfo").json()
@@ -326,21 +416,27 @@ def get_exchange_info():
                 minQty = filter_types['minQty']
                 maxQty = filter_types['maxQty']
                 stepSize = filter_types['stepSize']
+            if filter_types['filterType'] == 'MIN_NOTIONAL':
+                minNotional = filter_types['minNotional']
+            if filter_types['filterType'] == 'PRICE_FILTER':
+                tickSize = filter_types['tickSize']
         if status == "TRADING":
             base_asset_info.update({
                 baseAsset:{
-                    'minQty':minQty,
-                    'maxQty':maxQty,
-                    'stepSize':stepSize
+                    'minQty':float(minQty),
+                    'maxQty':float(maxQty),
+                    'stepSize':float(stepSize)
                 }
             })
             binance_pair_info.update({
                 symbol:{
                     'baseAsset':baseAsset,
                     'quoteAsset':quoteAsset,
-                    'minQty':minQty,
-                    'maxQty':maxQty,
-                    'stepSize':stepSize
+                    'minQty':float(minQty),
+                    'maxQty':float(maxQty),
+                    'minNotional':float(minNotional),
+                    'stepSize':float(stepSize),
+                    'tickSize':float(tickSize)
                 }
             })
             binance_pairs.append(symbol)
@@ -348,6 +444,7 @@ def get_exchange_info():
                 quoteAssets.append(quoteAsset)
 
     for base in base_asset_info:
+        quotes = []
         available_pairs = []
         for rel in quoteAssets:
             if base+rel in binance_pairs:
@@ -361,11 +458,14 @@ def get_exchange_info():
                     if base+quote in quoteAssets:
                         symbol = rel+base
                         available_pairs.append(symbol)
+                        quotes.append(quote)
                     elif quote+base in quoteAssets:
                         symbol = base+rel
                         available_pairs.append(symbol)
+                        quotes.append(quote)
         available_pairs.sort()
         base_asset_info[base].update({'available_pairs':available_pairs})
+        base_asset_info[base].update({'quote_assets':quotes})
     for base in coinslib.coin_api_codes:
         if base in base_asset_info:
             supported_binance_pairs += base_asset_info[base]['available_pairs']
@@ -374,15 +474,6 @@ def get_exchange_info():
     supported_binance_pairs.sort()
     quoteAssets.sort()
     return binance_pairs, base_asset_info, quoteAssets, binance_pair_info, supported_binance_pairs
-
-
-
-exch_info = get_exchange_info()
-binance_pairs = exch_info[0]
-base_asset_info = exch_info[1]
-quoteAssets = exch_info[2]
-binance_pair_info = exch_info[3]
-supported_binance_pairs = exch_info[4]
 
 def get_binance_balances(key, secret):
     binance_balances = {}
@@ -396,7 +487,142 @@ def get_binance_balances(key, secret):
             binance_balances.update({coin:{
                     'available':available,
                     'locked':locked,
-                    'total':balance,
+                    'total':balance
                 }
             })
     return binance_balances
+
+def get_binance_addresses(key, secret):
+    binance_addresses = {}
+    acct_info = get_account_info(key, secret)
+    if 'balances' in acct_info:
+        for item in acct_info['balances']:
+            coin = item['asset']
+            resp = get_deposit_addr(key, secret, coin)
+            if 'address' in resp:
+                addr_text = resp['address']
+            else:
+                addr_text = 'Address not found - create it at Binance.com'
+            address = addr_text
+            binance_addresses.update({coin:address})
+    return binance_addresses
+
+def get_binance_common_quoteAsset(base, rel):
+    available_base_pairs = base_asset_info[base]['available_pairs']
+    available_base_quote_assets = []
+    for symbol in available_base_pairs:
+        available_base_quote_assets.append(binance_pair_info[symbol]['quoteAsset'])
+    available_rel_pairs = base_asset_info[rel]['available_pairs']
+    available_rel_quote_assets = []
+    for symbol in available_rel_pairs:
+        available_rel_quote_assets.append(binance_pair_info[symbol]['quoteAsset'])
+    return list(set(available_base_quote_assets)&set(available_rel_quote_assets))    
+
+# For a given trade pair, determine if direct trade possible, or if a common quote asset is avaiable.
+def get_binance_countertrade_symbols(bn_key, bn_secret, binance_balances, replenish_coin, spend_coin, replenish_coin_amount, spend_coin_amount):
+    available_replenish_coin_pairs = base_asset_info[replenish_coin]['available_pairs']
+    available_spend_coin_pairs = base_asset_info[spend_coin]['available_pairs']
+    print("**** "+str(binance_balances))
+    if replenish_coin not in binance_balances or spend_coin not in binance_balances:
+        binance_balances = get_binance_balances(bn_key, bn_secret)
+        print("## "+str(binance_balances))
+    replenish_coin_bal = binance_balances[replenish_coin]['available']
+    spend_coin_bal = binance_balances[spend_coin]['available']
+
+    if replenish_coin in quoteAssets:
+        # check if direct spend_coin trade possible
+        for symbol in available_spend_coin_pairs:
+            if binance_pair_info[symbol]['quoteAsset'] == replenish_coin:
+                print("Direct trade symbol found (replenish_coin quote): "+symbol)
+                return symbol, symbol
+    if spend_coin in quoteAssets:
+        # check if direct replenish_coin trade possible
+        for symbol in available_replenish_coin_pairs:
+            if binance_pair_info[symbol]['quoteAsset'] == spend_coin:
+                print("Direct trade symbol found (spend_coin quote): "+symbol)
+                return symbol, symbol
+
+    # no common pair, check for common quote asset
+    print("No common trade symbol, checking for common quote asset...")
+    for replenish_coin_symbol in available_replenish_coin_pairs:
+        replenish_coin_quoteAsset = binance_pair_info[replenish_coin_symbol]['quoteAsset']
+        for spend_coin_symbol in available_spend_coin_pairs:
+            spend_coin_quoteAsset = binance_pair_info[spend_coin_symbol]['quoteAsset']
+            if spend_coin_quoteAsset == replenish_coin_quoteAsset:
+                # calculate required quote asset value for trade, check if balance sufficient.
+                quoteAsset_balance = binance_balances[replenish_coin_quoteAsset]['available']
+                replenish_coin_symbol_market_price = get_price(bn_key, replenish_coin_symbol)['price']
+                quoteAsset_req = float(replenish_coin_amount)*float(replenish_coin_symbol_market_price)
+                if quoteAsset_req < quoteAsset_balance:
+                    print("Indirect countertrading with "+replenish_coin_quoteAsset)
+                    print("spend_coin_symbol: "+spend_coin_symbol)
+                    print("replenish_coin_symbol: "+replenish_coin_symbol)
+                    return spend_coin_symbol, replenish_coin_symbol
+                else:
+                    print("Not enough "+replenish_coin_quoteAsset+" balance to countertrade! "+str(quoteAsset_req)+" needed, "+str(quoteAsset_balance)+" available")
+    # If no match is found
+    return False, False
+
+def get_binance_price(base, rel, prices_data):
+    # direct
+    prices = {}
+    if base+rel in binance_pairs:
+        prices.update({"direct":{
+                base+rel:prices_data["Binance"][base][rel],
+                rel+base:1/prices_data["Binance"][base][rel]
+             }
+        })
+    elif rel+base in binance_pairs:
+        prices.update({"direct":{
+                rel+base:1/prices_data["Binance"][base][rel],
+                base+rel:prices_data["Binance"][base][rel]
+             }
+        })
+    # indirect via common quote
+    rel_quotes = []
+    base_quotes = []
+    for quote in prices_data["Binance"]:
+        if base in prices_data["Binance"][quote]:
+            rel_quotes.append(quote)
+        if rel in prices_data["Binance"][quote]:
+            base_quotes.append(quote)
+    common_quote = list(set(rel_quotes) & set(base_quotes))
+    indirect = {}
+    if len(common_quote) > 0:
+        for q_asset in common_quote:
+            indirect[q_asset] = {}
+            base_price = prices_data["Binance"][q_asset][base]
+            rel_price = prices_data["Binance"][q_asset][rel]
+            indirect[q_asset].update({rel+base:base_price/rel_price})
+            indirect[q_asset].update({base+rel:rel_price/base_price})
+            indirect[q_asset].update({rel+q_asset:rel_price})
+            indirect[q_asset].update({base+q_asset:base_price})
+        prices.update({"indirect":indirect})
+    #TODO: calc fees
+    return prices
+
+def get_btc_price(api_key, cointag):
+    #print("getting binance btc price for "+cointag)
+    if cointag == 'BTC':
+        return 1
+    else:
+        btc_price = get_price(api_key, cointag+'BTC')
+    if 'price' in btc_price:
+        return float(btc_price['price'])
+    else:
+        return 0
+
+def get_trade_price_val(creds, base, rel, balance):
+    base_btc_price = get_btc_price(creds[5], base)
+    rel_btc_price = get_btc_price(creds[5], rel)
+    rel_price = base_btc_price/rel_btc_price
+    trade_price = rel_price+rel_price*float(creds[7])/100
+    trade_val = round(float(rel_price)*float(balance),8)
+    return trade_price, trade_val
+
+exch_info = get_exchange_info()
+binance_pairs = exch_info[0]
+base_asset_info = exch_info[1]
+quoteAssets = exch_info[2]
+binance_pair_info = exch_info[3]
+supported_binance_pairs = exch_info[4]

@@ -253,3 +253,15 @@ for coin in coin_api_codes:
         gecko_ids.append(coin_api_codes[coin]['coingecko_id'])
 
 cex_names = ['Binance']
+
+def validate_coins(coins_list):
+    for coin in coins_list:
+        if coin not in cointags:
+            return False, coin
+    return True, coins_list
+
+def validate_cex(cex_list):
+    for cex in cex_list:
+        if cex not in cex_names:
+            return False, cex
+    return True, cex_list
