@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
-#from typing import Optional, List
-#from fastapi import Depends, FastAPI, HTTPException
+from typing import Optional, List
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi import FastAPI
-#from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 #from pydantic import BaseModel, Field
-#from starlette.status import HTTP_401_UNAUTHORIZED
+from starlette.status import HTTP_401_UNAUTHORIZED
 from threading import Thread
-import logging
 #import sqlite3
 import datetime
 from lib import rpclib, botlib, coinslib, priceslib, binance_api
+import uvicorn
+import uvicorn.protocols
+import uvicorn.lifespan
+import uvicorn.lifespan.on
+import uvicorn.protocols.http
+import uvicorn.protocols.websockets
+import uvicorn.protocols.websockets.auto
+import uvicorn.protocols.http.auto
+import uvicorn.logging
+import uvicorn.loops
+import uvicorn.loops.auto
 import time
 import json
 import sys
 import os
-import uvicorn
 
 ## ALTERNATIVE APIS
 ### DEX: https://api.blocknet.co/#xbridge-api / https://github.com/blocknetdx/dxmakerbot requires syncd local nodes
@@ -78,7 +87,13 @@ import uvicorn
         average:{}
     }
 '''
-root_config_path = sys.argv[1]
+try:
+	root_config_path = sys.argv[1]
+except:
+	print("You need to define config path as a runtime parameter!")
+	print("E.g. `mmbot_api ~/.config/KomodoPlatform`")
+	sys.exit()
+
 
 config_path = 'not set'
 
@@ -1132,53 +1147,6 @@ async def binance_prices(base, rel):
     }
     return prices
 
-
-def main():
-   # bot_thread = threading.Thread(target=bot_loop, args=())
-   # prices_thread = threading.Thread(target=prices_loop, args=())
-   pass
-
 if __name__ == "__main__":
     format = "%(asctime)s: %(message)s"
-    logging.basicConfig(format=format, level=logging.INFO, datefmt="%H:%M:%S")
     uvicorn.run(app, host="127.0.0.1", port=8000)
-'''
-method: start_trade strategy: marketmaking``margin: 10 tickers_base: [BTC, KMD] tickers_rel: [VRSC]
-method: get_trading_status -> result: success list_of_strategies_working: [1,2,3]
-
-
-stop_strategy strategy_id -> result
-started_strategies_list -> list_with_ids 
-history_strategies_list -> displaying `active` and `history` (stopped) of strategies
-strategy_info strategy_id -> info with params and some events maybe (at least amount of events)
-strategy_events strategy_id <depth> -> displaying events (trades/transfers and etc) for strategy with optional depth (amount of last events to show) argument
-'''
-
-# strategies examples - https://github.com/CoinAlpha/hummingbot/tree/master/documentation/docs/strategies
-
-## API methods
-
-# start_trading(sell_list, buy_list, margin, refresh_interval=30 (optional, minutes), balance_pct=100 (optional, default 100), cex_countertrade=None (optional, cex_name or None).
-# if cex not None, check if cex_auth is ok.
-# if refresh interval expires while swap in progress, wait before cancel.
-# monitor trade status periodically, emit on updates. 
-# emits bot history json - see mmbot_qt for format. if json contains initiated swaps, after finish/ order cancel, store locally on client.
-
-# get_strategy_status(strategy_id, verbose=False)
-# forces update and emit of bot history json for id. Return enough to get more info from mm2 if verbose=True.
-
-# get_completed_trades_history(limit=10, from='', verbose=False)
-# returns bot history json for last "limit" trades. Augment via mm2 for more data if verbose=True
-
-# show_strategy(strategy_id)
-# returns strategy_input_params, pending_trade_ids, completed_trade_ids, aggregated_balance_deltas
-
-# stop_trading(strategy_id, force=False)
-# check for in progress cex/mm2 trades. Cancel if None. If not None, schedule for cancel once in progress tradess complete.
-# If force is true, cancel regardless.
-
-# get_active_strategies()
-# show list of strategies currently in progress.
-
-# arbitrage(cex_list, coin_pair, min_profit_pct)
-# for a given coin_pair (e.g. KMDBTC), monitor all cex on the list, and mm2 for prices. If price differential between exchanges exceeds min_profit_pct, execute matching trades to take advantage.

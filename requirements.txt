@@ -1,5 +1,6 @@
 setuptools
 fastapi==0.44.1
-uvicorn==0.10.8
+uvicorn
 requests==2.22.0
+pydantic==1.2
 python-multipart==0.0.5
