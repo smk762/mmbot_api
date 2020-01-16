@@ -156,7 +156,7 @@ def prices_loop():
                         invert_price = 0
                     prices_data["Binance"][quoteAsset].update({baseAsset:invert_price})
                     prices_data["Binance"][baseAsset].update({quoteAsset:price})
-
+    print(prices_data)
     paprika_data = requests.get("https://api.coinpaprika.com/v1/tickers?quotes=USD%2CBTC").json()
     for item in paprika_data:
         if item['symbol'] in coinslib.cointags:
@@ -167,7 +167,7 @@ def prices_loop():
                 }
             })
 
-    gecko_data = gecko_prices(",".join(coinslib.gecko_ids), 'usd,btc').json()
+    gecko_data = priceslib.gecko_prices(",".join(coinslib.gecko_ids), 'usd,btc').json()
     for coin in coinslib.cointags:
         usd_api_sum = 0
         btc_api_sum = 0
@@ -217,6 +217,7 @@ def prices_loop():
                 "usd_sources":usd_api_sources
             }
         })
+    print(prices_data)
     return prices_data
 
 # MISC
@@ -232,7 +233,7 @@ def mm2_active_coins(mm2_ip, mm2_rpc_pass):
 # STRATEGIES
 
 def submit_strategy_orders(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path, strategy, history):
-    prices_data = priceslib.prices_loop()
+    prices_data = prices_loop()
     print("*** submitting strategy orders ***")
     print("Strategy: "+str(strategy))
     if strategy['Type'] == 'margin':
@@ -243,7 +244,7 @@ def submit_strategy_orders(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path,
 
 def run_arb_strategy(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path, strategy, history):
     orderbook_data = orderbook_loop(mm2_ip, mm2_rpc_pass, config_path)
-    prices_data = priceslib.prices_loop()
+    prices_data = prices_loop()
     # check balances
     balances = {}
     for base in strategy['Buy list']:

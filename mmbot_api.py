@@ -171,7 +171,7 @@ class price_update_thread(object):
     def run(self):
         global prices_data
         while self.signal == True:
-            prices_data = priceslib.prices_loop()
+            prices_data = botlib.prices_loop()
             time.sleep(self.interval)
 
 class bot_update_thread(object):
