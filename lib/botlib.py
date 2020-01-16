@@ -156,7 +156,6 @@ def prices_loop():
                         invert_price = 0
                     prices_data["Binance"][quoteAsset].update({baseAsset:invert_price})
                     prices_data["Binance"][baseAsset].update({quoteAsset:price})
-    print(prices_data)
     paprika_data = requests.get("https://api.coinpaprika.com/v1/tickers?quotes=USD%2CBTC").json()
     for item in paprika_data:
         if item['symbol'] in coinslib.cointags:
@@ -217,7 +216,6 @@ def prices_loop():
                 "usd_sources":usd_api_sources
             }
         })
-    print(prices_data)
     return prices_data
 
 # MISC
