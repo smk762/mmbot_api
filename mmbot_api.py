@@ -24,6 +24,14 @@ import time
 import json
 import sys
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 ## ALTERNATIVE APIS
 ### DEX: https://api.blocknet.co/#xbridge-api / https://github.com/blocknetdx/dxmakerbot requires syncd local nodes
@@ -31,70 +39,17 @@ import os
 # todo: detect Ctrl-C or bot exit/death, then cancel all orders. blocking thread might allow this?
 # in thread, check strategies. for active strategies, last refresh time, and refresh interval. If time to refresh, refresh.
 
-## JSON Schemas
-    
-
-'''
-    path = ./strategies/{strategy_name}.json
-
-    strategy = {
-        "name": str,
-        "strategy_type": str,
-        "sell_list": list,
-        "buy_list": list,
-        "margin": float,
-        "refresh_interval": int,
-        "balance_pct": int,
-        "cex_countertrade": list,
-        "reference_api": str
-    }
-'''
-
-
-'''
-    path = ./history/{strategy_name}.json
-
-    history = { 
-        "num_sessions": dict,
-        "sessions":{
-            "1":{
-                "started": timestamp,
-                "duration": int,
-                "mm2_open_orders": list,
-                "mm2_swaps_in_progress": dict,
-                "mm2_swaps_completed": dict,
-                "cex_open_orders": dict,
-                "cex_swaps_in_progress": dict,
-                "cex_swaps_completed": dict,
-                "balance_deltas": dict,
-            }
-        },
-        "last_refresh": int,
-        "total_mm2_swaps_completed": int,
-        "total_cex_swaps_completed": int,
-        "total_balance_deltas": dict,
-        "status":str
-    }
-'''
-
-'''
-    cached in mem
-
-    prices = {
-        coingecko:{},
-        coinpaprika:{},
-        binance:{},
-        average:{}
-    }
-'''
 try:
 	root_config_path = sys.argv[1]
 except:
-	print("You need to define config path as a runtime parameter!")
-	print("E.g. `mmbot_api ~/.config/KomodoPlatform`")
+	logger.info("You need to define config path as a runtime parameter!")
+	logger.info("E.g. `./mmbot_api ~/.config/KomodoPlatform`")
 	sys.exit()
 
-
+mm2_ip = '127.0.0.1'
+mm2_rpc_pass = "nopass"
+bn_key = "nopass"
+bn_secret = "nopass"
 config_path = 'not set'
 
 config_folders = ['strategies', 'history']
@@ -106,18 +61,11 @@ balances_data = {
     "Binance": {}
 }
 prices_data = {
-    "Binance":{
-
-    },
-    "paprika":{
-
-    },
-    "gecko":{
-
-    },
-    "average":{
-
-    }
+    "Binance":{},
+    "paprika":{},
+    "gecko":{},
+    "average":{},
+    "mm2_orderbook":{}
 }
 addresses_data = {}
 
@@ -171,7 +119,7 @@ class price_update_thread(object):
     def run(self):
         global prices_data
         while self.signal == True:
-            prices_data = botlib.prices_loop()
+            prices_data = botlib.prices_loop(mm2_ip, mm2_rpc_pass)
             time.sleep(self.interval)
 
 class bot_update_thread(object):
@@ -529,17 +477,32 @@ async def mm2_history_table():
             status = event_type
             role = swap['type']
             uuid = swap['uuid']
-            my_amount = botlib.format_num_10f(swap['my_info']['my_amount'])
-            my_coin = swap['my_info']['my_coin']
-            other_amount = botlib.format_num_10f(swap['my_info']['other_amount'])
-            other_coin = swap['my_info']['other_coin']
-            started_at = datetime.datetime.fromtimestamp(round(swap['my_info']['started_at']/1000)*1000)
+            try:
+                my_amount = botlib.format_num_10f(swap['my_info']['my_amount'])
+                my_coin = swap['my_info']['my_coin']
+                other_amount = botlib.format_num_10f(swap['my_info']['other_amount'])
+                other_coin = swap['my_info']['other_coin']
+                started_at = datetime.datetime.fromtimestamp(round(swap['my_info']['started_at']/1000)*1000)
+            except Exception as e:
+                my_amount = '-'
+                my_coin = '-'
+                other_amount = '-'
+                other_coin = '-'
+                started_at = '-'
             if swap['type'] == 'Taker':
-                buy_price = botlib.format_num_10f(float(swap['my_info']['my_amount'])/float(swap['my_info']['other_amount']))
+                try:
+                    buy_price = botlib.format_num_10f(float(swap['my_info']['my_amount'])/float(swap['my_info']['other_amount']))
+                except Exception as e:
+                    buy_price = '-'    
                 sell_price = '-'
             else:
                 buy_price = '-'
-                sell_price = botlib.format_num_10f(float(swap['my_info']['other_amount'])/float(swap['my_info']['my_amount']))
+                try:
+                    sell_price = botlib.format_num_10f(float(swap['my_info']['other_amount'])/float(swap['my_info']['my_amount']))    
+                except Exception as e:
+                    sell_price = '-'
+                    
+                
             table_data.append({
                     "Start Time":started_at,
                     "Role":role,
@@ -614,7 +577,7 @@ async def strategies_history_table():
                                 "Status": "Incomplete"
                             })
                     else:
-                        print("Error with Binance Order: "+str(order_info))
+                        logger.info("Error with Binance Order: "+str(order_info))
                 for symbol in history['Sessions'][session]['CEX swaps completed']['Binance'][uuid]:
                     order_info = history['Sessions'][session]['CEX swaps completed']['Binance'][uuid][symbol]
                     if order_info['side'] == 'BUY':
@@ -826,7 +789,7 @@ async def list_cex():
     return resp
 
 @app.get("/mm2_orderbook")
-async def show_mm2_orderbook():
+async def mm2_orderbook():
     resp = {
         "response": "success",
         "orderbook": mm2_orderbook_data
@@ -1148,5 +1111,5 @@ async def binance_prices(base, rel):
     return prices
 
 if __name__ == "__main__":
-    format = "%(asctime)s: %(message)s"
+    format = '%(asctime)s %(levelname)-8s %(message)s'
     uvicorn.run(app, host="127.0.0.1", port=8000)

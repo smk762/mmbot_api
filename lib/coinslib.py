@@ -3,6 +3,9 @@
 # premium: value relative to binance market rate to setprices as marketmaker.
 # min/max/stepsize need to be set from values from 
 # https://api.binance.com/api/v1/exchangeInfo
+from . import priceslib
+import logging
+logger = logging.getLogger(__name__)
 
 coin_api_codes = {
    'AXE':{
@@ -95,12 +98,24 @@ coin_api_codes = {
       'paprika_id':'doge-dogecoin',
       'name':'Dogecoin'
    },
+    "ECA":{
+      'coingecko_id':'',
+      'binance_id':'',
+      'paprika_id':'',
+      'name':''
+    },
    'ETH':{
       'coingecko_id':'ethereum',
       'binance_id':'ETH',
       'paprika_id':'eth-ethereum',
       'name':'Ethereum'
    },
+    "FTC":{
+      'coingecko_id':'',
+      'binance_id':'',
+      'paprika_id':'',
+      'name':''
+    },
    'HUSH':{
       'coingecko_id':'hush',
       'binance_id':'',
@@ -265,3 +280,32 @@ def validate_cex(cex_list):
         if cex not in cex_names:
             return False, cex
     return True, cex_list
+
+def build_coins_data(node_ip, user_pass):
+   coins_data = {}
+   for coin in cointags:
+       coins_data.update({coin:{}})
+   logger.info('Getting prices from mm2 orderbook...')
+   for coin in coins_data:
+       try:
+           if coin == 'RICK' or coin == 'MORTY':
+               coins_data[coin]['BTC_price'] = 0
+               coins_data[coin]['AUD_price'] = 0
+               coins_data[coin]['USD_price'] = 0
+               coins_data[coin]['KMD_price'] = 0
+               coins_data[coin]['price_source'] = 'mm2_orderbook'
+           elif coins_data[coin]['BTC_price'] == 0:
+               mm2_kmd_price = rpclib.get_kmd_mm2_price(node_ip, user_pass, coin)
+               coins_data[coin]['KMD_price'] = mm2_kmd_price[1]
+               coins_data[coin]['price_source'] = 'mm2_orderbook'
+               coins_data[coin]['BTC_price'] = mm2_kmd_price[1]*coins_data['KMD']['BTC_price']
+               coins_data[coin]['AUD_price'] = mm2_kmd_price[1]*coins_data['KMD']['AUD_price']
+               coins_data[coin]['USD_price'] = mm2_kmd_price[1]*coins_data['KMD']['USD_price']
+       except Exception as e:
+           logger.info("Error getting KMD price (building coin data): "+str(e))
+           coins_data[coin]['KMD_price'] = 0
+           coins_data[coin]['price_source'] = 'mm2_orderbook'
+           coins_data[coin]['BTC_price'] = 0
+           coins_data[coin]['AUD_price'] = 0
+           coins_data[coin]['USD_price'] = 0
+   return coins_data

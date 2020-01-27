@@ -5,6 +5,15 @@ import time
 import requests
 from . import rpclib, priceslib, binance_api, coinslib
 
+import logging
+
+logger = logging.getLogger()
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
 #  LOOPS
 def format_num_10f(val):
     if val != 0:
@@ -25,7 +34,7 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, config_path):
     return orderbook_data
     
 def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data, config_path):
-    print("starting bot loop")
+    logger.info("Running bot loop")
     strategies = [ x[:-5] for x in os.listdir(config_path+'/strategies') if x.endswith("json") ]
     bot_data = "bot data placeholder"
     for strategy_name in strategies:
@@ -34,15 +43,14 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
         if history['Status'] == 'active':
             session_start = history['Sessions'][str(len(history['Sessions'])-1)]['Started']
             history['Sessions'][str(len(history['Sessions'])-1)].update({"Duration":int(time.time())-session_start})
-            print("Active strategy: "+strategy_name)
+            logger.info("Active strategy: "+strategy_name)
             with open(config_path+"strategies/"+strategy_name+".json", 'r') as f:
                 strategy = json.loads(f.read())
             history = update_session_swaps(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, strategy, history)
             history = get_binance_orders_status(bn_key, bn_secret, history)
-            print("session swaps updated")
-            print("update total balanace deltas")
+            logger.info("["+strategy_name+"] Session swaps updated")
             history = calc_balance_deltas(strategy, history)
-            print("total deltas updated")
+            logger.info("["+strategy_name+"] Balance deltas updated")            
             # check refresh interval vs last refresh
             refresh_time = history['Last refresh'] + strategy['Refresh interval']*60
             if history['Last refresh'] == 0 or refresh_time < int(time.time()) or history['Last refresh'] < session_start:
@@ -54,7 +62,7 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
                         inactive_skip = True
                         break
                 if not inactive_skip:
-                    print("*** Refreshing strategy: "+strategy_name+" ***")
+                    logger.info("["+strategy_name+"] Refreshing strategy...")
                     history.update({'Last refresh':int(time.time())})
                     # cancel old orders
                     history = cancel_session_orders(mm2_ip, mm2_rpc_pass, history)
@@ -62,13 +70,12 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
                     history = submit_strategy_orders(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path, strategy, history)
                     # update session history
                 else:
-                    print("Skipping strategy "+strategy_name+": MM2 coins not active ")
+                    logger.info("["+strategy_name+"] Skipping strategy: MM2 coins not active")
             else:
                 time_left = (history['Last refresh'] + strategy['Refresh interval']*60 - int(time.time()))/60
-                print("Skipping strategy "+strategy_name+": waiting for refresh interval in "+str(time_left)+" min")
+                logger.info("["+strategy_name+"] Skipping strategy: waiting for refresh interval in "+str(time_left)+" min")
             with open(config_path+"history/"+strategy_name+".json", 'w+') as f:
                  f.write(json.dumps(history, indent=4))
-    print("bot loop completed")
     return bot_data
 
 def mm2_balances_loop(mm2_ip, mm2_rpc_pass, coin):
@@ -120,7 +127,7 @@ def bn_balances_loop(bn_key, bn_secret, addresses_data):
         })
     return bn_balances_data
 
-def prices_loop():
+def prices_loop(mm2_ip, mm2_rpc_pass):
     # TODO: include mm2 price? or do separate?
     # source > quoteasset > baseasset
     prices_data = {
@@ -133,11 +140,14 @@ def prices_loop():
         "gecko":{
 
         },
+        "mm2_orderbook":{
+
+        },
         "average":{
 
         }
     }
-
+    # Get Binance Price Data
     binance_data = requests.get("https://api.binance.com/api/v1/ticker/allPrices").json()
     binance_prices = {}
     for item in binance_data:
@@ -150,7 +160,7 @@ def prices_loop():
                     prices_data["Binance"][baseAsset] = {}
                 if baseAsset+quoteAsset in binance_prices:
                     price = float(binance_prices[baseAsset+quoteAsset])
-                    if price !=- 0:
+                    if price != 0:
                         invert_price = 1/price
                     else: 
                         invert_price = 0
@@ -158,7 +168,7 @@ def prices_loop():
                     prices_data["Binance"][baseAsset].update({quoteAsset:price})
     paprika_data = requests.get("https://api.coinpaprika.com/v1/tickers?quotes=USD%2CBTC").json()
     for item in paprika_data:
-        if item['symbol'] in coinslib.cointags:
+        if item['symbol'] in coinslib.cointags and item['symbol'] not in ['DEX']: # ignore ticker clash
             prices_data['paprika'].update({
                 item['symbol']:{
                     "USD":item['quotes']['USD']['price'],
@@ -201,13 +211,12 @@ def prices_loop():
             elif coin in prices_data["Binance"]['BTC']:
                 btc_api_sum += 1/prices_data["Binance"]['BTC'][coin]
                 btc_api_sources.append('Binance')
-
         if len(usd_api_sources) > 0:
             usd_ave = usd_api_sum/len(usd_api_sources)
             btc_ave = btc_api_sum/len(btc_api_sources)
         else:
-            btc_ave = 'No Data'
-            usd_ave = 'No Data'
+            btc_ave = '-'
+            usd_ave = '-'
         prices_data['average'].update({
             coin:{
                 "USD":usd_ave,
@@ -216,6 +225,60 @@ def prices_loop():
                 "usd_sources":usd_api_sources
             }
         })
+    for coin in prices_data['average']:
+        if prices_data['average'][coin]['USD'] != '-':
+            kmd_ave = prices_data['average'][coin]['USD']/prices_data['average']['KMD']['USD']
+        else:
+            kmd_ave = '-'
+        prices_data['average'][coin].update({
+            "KMD":kmd_ave
+            })
+    for coin in coinslib.cointags:
+        try:
+            if coin not in prices_data['mm2_orderbook']:
+                prices_data['mm2_orderbook'].update({
+                    coin:{
+                        "KMD": '-',
+                        "BTC": '-',
+                        "USD": '-',
+                    }
+                })
+            if coin not in ['RICK', 'MORTY']:
+                if 'KMD' in prices_data['average'] :
+                    if coin == 'KMD':
+                        prices_data['mm2_orderbook'][coin]['KMD'] = 1
+                        prices_data['mm2_orderbook'][coin]['BTC'] = prices_data['average']['KMD']['BTC']
+                        prices_data['mm2_orderbook'][coin]['USD'] = prices_data['average']['KMD']['USD']
+                    else:
+                        mm2_kmd_price = rpclib.get_kmd_mm2_price(mm2_ip, mm2_rpc_pass, coin)
+                        print(coin)
+                        print(mm2_kmd_price[1])
+                        prices_data['mm2_orderbook'][coin]['KMD'] = mm2_kmd_price[1]
+                        if mm2_kmd_price[1] != '-':
+                            if prices_data['average']['KMD']['BTC'] != '-':
+                                prices_data['mm2_orderbook'][coin]['BTC'] = mm2_kmd_price[1]*prices_data['average']['KMD']['BTC']
+                            else:
+                                prices_data['mm2_orderbook'][coin]['BTC'] = '-'
+                            if prices_data['average']['KMD']['USD'] != '-':
+                                prices_data['mm2_orderbook'][coin]['USD'] = mm2_kmd_price[1]*prices_data['average']['KMD']['USD']
+                            else:
+                                prices_data['mm2_orderbook'][coin]['BTC'] = '-'
+                        else:
+                            prices_data['mm2_orderbook'][coin]['USD'] = '-'
+                            prices_data['mm2_orderbook'][coin]['BTC'] = '-'
+                        if prices_data['average'][coin]['KMD'] == '-':
+                            prices_data['average'][coin]['KMD'] = mm2_kmd_price[1]
+                        if prices_data['average'][coin]['BTC'] == '-':
+                            prices_data['average'][coin]['BTC'] = prices_data['mm2_orderbook'][coin]['BTC']
+                            prices_data['average'][coin]["btc_sources"] = ['mm2_orderbook']
+                        if prices_data['average'][coin]['USD'] == '-':
+                            prices_data['average'][coin]['USD'] = prices_data['mm2_orderbook'][coin]['USD']
+                            prices_data['average'][coin]["usd_sources"] = ['mm2_orderbook']
+
+        except Exception as e:
+                logger.info("Error getting KMD price (prices loop): "+str(e))
+        logger.info(len(coinslib.cointags))
+        logger.info(coinslib.cointags)
     return prices_data
 
 # MISC
@@ -231,9 +294,7 @@ def mm2_active_coins(mm2_ip, mm2_rpc_pass):
 # STRATEGIES
 
 def submit_strategy_orders(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path, strategy, history):
-    prices_data = prices_loop()
-    print("*** submitting strategy orders ***")
-    print("Strategy: "+str(strategy))
+    prices_data = prices_loop(mm2_ip, mm2_rpc_pass)
     if strategy['Type'] == 'margin':
         history = run_margin_strategy(mm2_ip, mm2_rpc_pass, strategy, history, prices_data)
     elif strategy['Type'] == 'arbitrage':
@@ -241,8 +302,9 @@ def submit_strategy_orders(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path,
     return history
 
 def run_arb_strategy(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path, strategy, history):
+    logger.info("["+strategy['Name']+"] Submitting arbitrage orders")
     orderbook_data = orderbook_loop(mm2_ip, mm2_rpc_pass, config_path)
-    prices_data = prices_loop()
+    prices_data = prices_loop(mm2_ip, mm2_rpc_pass)
     # check balances
     balances = {}
     for base in strategy['Buy list']:
@@ -260,8 +322,7 @@ def run_arb_strategy(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path, strat
                             mm2_rel = item['rel']
                             best_mm2_price = mm2_price
                             mm2_maxvol = float(item['max_volume'])
-                    print("** BEST MM2 PRICE: "+str(best_mm2_price))
-
+                    logger.info("["+strategy['Name']+"] "+base+"/"+rel+": Best mm2 price: "+str(best_mm2_price))
                     best_bn_price = 999999999999999999999999999999999
                     # Check for direct binance price
                     if base+rel in binance_api.binance_pairs:
@@ -288,10 +349,10 @@ def run_arb_strategy(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path, strat
                             if binance_price < best_bn_price:
                                 best_bn_price = binance_price
                                 source = "Indirect via "+rel+quote+" & "+base+quote
-                    print("** BEST BINANCE PRICE: "+str(best_bn_price)+" ("+source+")")
+                    logger.info("["+strategy['Name']+"] "+base+"/"+rel+": Best CEX price: "+str(best_bn_price)+" ("+source+")")
                     pct = (best_mm2_price/best_bn_price-1)*100
                     if pct < -1*strategy['Margin']:
-                        print("*** ARB OPPORTUNITY! *** (pct vs binance best = "+str(pct)+"%)")
+                        logger.info("["+strategy['Name']+"] "+base+"/"+rel+": *** ARB OPPORTUNITY! *** (pct vs binance best = "+str(pct)+"%)")
                         # buy base, sell rel. 
                         mm2_rel_bal = float(rpclib.my_balance(mm2_ip, mm2_rpc_pass, mm2_rel).json()['balance'])*strategy["Balance pct"]/100
                         mm2_trade_fee = float(rpclib.get_fee(mm2_ip, mm2_rpc_pass, mm2_rel).json()['result']['amount'])*2
@@ -300,16 +361,16 @@ def run_arb_strategy(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, config_path, strat
                             trade_val = mm2_vol*prices_data['average'][mm2_base]['USD']
                         if trade_val > 5:
                             resp = rpclib.buy(mm2_ip, mm2_rpc_pass, mm2_base, mm2_rel, mm2_vol, best_mm2_price).json()
-                            print(resp)
+                            logger.info(resp)
                             if 'result' in resp:
                                 session = str(len(history['Sessions'])-1)
                                 history['Sessions'][session]['MM2 open orders'].append(resp['result']['uuid'])
                         else:
-                            print("Skipping, below USD$5 trade value") 
-                    print("---------------------------------------------------------")
+                            logger.info("["+strategy['Name']+"] "+base+"/"+rel+": Skipping, below USD$5 trade value") 
     return history
 
 def run_margin_strategy(mm2_ip, mm2_rpc_pass, strategy, history, prices_data):
+    logger.info("["+strategy['Name']+"] Submitting margin orders")
     uuids = []
     for rel in strategy['Buy list']:
         for base in strategy['Sell list']:
@@ -321,24 +382,31 @@ def run_margin_strategy(mm2_ip, mm2_rpc_pass, strategy, history, prices_data):
                     # todo: make fin safe (no float)
                     rel_price = (base_btc_price/rel_btc_price)*(1+strategy['Margin']/100)
                     base_balance_info = rpclib.my_balance(mm2_ip, mm2_rpc_pass, base).json()
-                    available_base_balance = float(base_balance_info["balance"]) - float(base_balance_info["locked_by_swaps"])
+                    if "balance" in base_balance_info:
+                        available_base_balance = float(base_balance_info["balance"]) - float(base_balance_info["locked_by_swaps"])
+                    else:
+                        available_base_balance = 0
+                        logger.warning("["+strategy['Name']+"] Balance unavailable for "+base+"/"+rel+" trade")
+                        logger.warning("["+strategy['Name']+"] Balance response: "+str(base_balance_info))
+
                     basevolume = available_base_balance * strategy['Balance pct']/100
-                    print("trade price: "+base+" (base) / "+rel+" (rel) "+str(rel_price)+" volume = "+str(basevolume))
+                    
+                    #logger.info("trade price: "+base+" (base) / "+rel+" (rel) "+str(rel_price)+" volume = "+str(basevolume))
                     if strategy['Balance pct'] != 100:
                         resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, False, True)
                     else:
                         resp = rpclib.setprice(mm2_ip, mm2_rpc_pass, base, rel, basevolume, rel_price, True, True)
-                    print("Setprice Order created: " + str(resp.json()))
+                    logger.info("["+strategy['Name']+"] Setprice Order created: " + str(resp.json()))
                     uuid = resp.json()['result']['uuid']
                     uuids.append(uuid)
                 else:
-                    print("No price data yet...")
+                    logger.info("["+strategy['Name']+"] Skipping order creation: No price data yet...")
     history['Sessions'][str(len(history['Sessions'])-1)]['MM2 open orders'] = uuids
     return history
     # update session history with open orders
 
 def get_mm2_swap_status(mm2_ip, mm2_rpc_pass, swap):
-    print("checking mm2 swap "+swap)
+    logger.info("Checking mm2 swap ["+swap+"]")
     swap_data = rpclib.my_swap_status(mm2_ip, mm2_rpc_pass, swap).json()
     if 'result' in swap_data:
         for event in swap_data['result']['events']:
@@ -350,42 +418,41 @@ def get_mm2_swap_status(mm2_ip, mm2_rpc_pass, swap):
             else:
                 status = event['event']['type']
     else: 
-        print(swap_data)
+        logger.info("Swap data ["+swap+"] "+swap_data)
     return status, swap_data['result']
 
 def update_session_swaps(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, strategy, history):
     for session in history['Sessions']:
         mm2_order_uuids = history['Sessions'][session]['MM2 open orders']
         for order_uuid in mm2_order_uuids:
-            print("order: "+order_uuid)
             order_info = rpclib.order_status(mm2_ip, mm2_rpc_pass, order_uuid).json()
             if 'order' in order_info:
                 swaps = order_info['order']['started_swaps']
-                print("swaps: "+str(swaps))
+                logger.info("["+strategy['Name']+"] Order "+order_uuid+" has "+str(len(swaps))+" swaps.")
+                if len(swaps) > 0:
+                    logger.info("["+strategy['Name']+"] Swaps: "+str(swaps))
                 for swap in swaps:
                     if swap not in history['Sessions'][session]['MM2 swaps in progress']:
                         history['Sessions'][session]['MM2 swaps in progress'].append(swap)
             elif 'error' in order_info:
-                print("order_info error: "+str(order_info))
+                logger.warning("["+strategy['Name']+"] Order "+order_uuid+" error: "+str(order_info))
                 swap_status = rpclib.my_swap_status(mm2_ip, mm2_rpc_pass, order_uuid).json()
-                print(swap_status)
                 if 'result' in swap_status:
                     if order_uuid not in history['Sessions'][session]['MM2 swaps in progress']:
                         history['Sessions'][session]['MM2 swaps in progress'].append(order_uuid)
                 else:
                     mm2_order_uuids.remove(order_uuid)
             else:
-                print("order_info: "+str(order_info))
+                logger.info("["+strategy['Name']+"] Order "+order_uuid+" info: "+str(order_info))
         swaps_in_progress = history['Sessions'][session]['MM2 swaps in progress']
         for swap in swaps_in_progress:
             swap_status = get_mm2_swap_status(mm2_ip, mm2_rpc_pass, swap)
             status = swap_status[0]
             swap_data = swap_status[1]
-            print(swap+" status: "+status)
+            logger.info("["+strategy['Name']+"] Swap "+swap+" status: "+status)
             if status == 'Finished':
-                print("adding to session deltas")
                 if "my_info" in swap_data:
-                    print("updating session deltas history")
+                    logger.info("updating session deltas history")
                     history['Sessions'][session]['MM2 swaps completed'].update({
                                                         swap:{
                                                             "Recieved coin":swap_data["my_info"]["other_coin"],
@@ -396,11 +463,8 @@ def update_session_swaps(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data,
                                                         }
                                                     })
                     swaps_in_progress.remove(swap)
-                    print("init cex counterswap ["+swap+"]")
                     history = start_cex_counterswap(bn_key, bn_secret, strategy, history, balances_data, session, swap)
-                    print("submitted cex counterswap  ["+swap+"]")
-                else:
-                    print(swap+" data: "+str(swap_data))
+                    logger.info("["+strategy['Name']+"] Submitting cex counterswap for MM2 swap  ["+swap+"]")
             elif status == 'Failed':
                 swaps_in_progress.remove(swap)
         history['Sessions'][session]['MM2 swaps in progress'] = swaps_in_progress
@@ -414,13 +478,20 @@ def get_binance_orders_status(bn_key, bn_secret, history):
                 add_symbols = []
                 rem_symbols = []
                 for symbol in history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid]:
-                    print(symbol)
-                    print(history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid])
                     if 'orderId' in history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]:
                         orderId = history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]['orderId']
                         resp = binance_api.get_order(bn_key, bn_secret, symbol, orderId)
                         if "status" in resp:
                             if resp['status'] == 'FILLED':
+                                logger.info("CEX Order complete: "+str(history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]))
+                                # move to "completed"
+                                if mm2_uuid not in history['Sessions'][session]["CEX swaps completed"]["Binance"]:
+                                    history['Sessions'][session]["CEX swaps completed"]["Binance"].update({mm2_uuid:{}})
+                                history['Sessions'][session]["CEX swaps completed"]["Binance"][mm2_uuid].update({symbol:resp})
+                                # remove from open
+                                rem_symbols.append(symbol)
+                            elif resp['status'] == 'CANCELLED':
+                                logger.info("CEX Order cancelled: "+str(history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]))
                                 # move to "completed"
                                 if mm2_uuid not in history['Sessions'][session]["CEX swaps completed"]["Binance"]:
                                     history['Sessions'][session]["CEX swaps completed"]["Binance"].update({mm2_uuid:{}})
@@ -429,8 +500,6 @@ def get_binance_orders_status(bn_key, bn_secret, history):
                                 rem_symbols.append(symbol)
                             else:
                                 add_symbols.append({symbol:resp})
-                        else:
-                            print(resp)
                     elif 'error' in history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]:
                         resp = history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]
                         if resp["type"] == "SELL":
@@ -464,7 +533,7 @@ def start_cex_counterswap(bn_key, bn_secret, strategy, history, balances_data, s
                 history = start_indirect_trade(bn_key, bn_secret, strategy, history, session_num, mm2_swap_uuid,
                                      replenish_coin, spend_coin, replenish_amount, spend_amount, symbols[0], symbols[1])
         else:
-            print("countertrade symbols not found")
+            logger.warning("["+strategy['Name']+"] CEX countertrade symbols not found for mm2 swap uuid ["+mm2_swap_uuid+"]")
     return history
 
 def start_direct_trade(bn_key, bn_secret, strategy, history, session_num, mm2_swap_uuid,
@@ -485,16 +554,13 @@ def start_direct_trade(bn_key, bn_secret, strategy, history, session_num, mm2_sw
         price = binance_api.round_to_tick(symbol, price)
         # Sell 10000 KMD for 0.79254 BTC
         resp = binance_api.create_sell_order(bn_key, bn_secret, symbol, spend_amount, price)
-        if 'orderId' in resp:
-            history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({symbol: resp})
-        else:
-            history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({symbol: {
+        if 'orderId' not in resp:
+            resp = {
                         "error": "Sell "+symbol+" failed - "+resp['msg'],
                         "type":"SELL",
                         "Amount":spend_amount,
                         "Price":format_num_10f(price)
                     }
-                })
     else:
         # E.g. Replenish KMD, Spend BTC
         # replenish_amount = 10000 (KMD)
@@ -506,16 +572,15 @@ def start_direct_trade(bn_key, bn_secret, strategy, history, session_num, mm2_sw
         price = binance_api.round_to_tick(symbol, price)
         # Replenish 10000 KMD, spending 0.7614 BTC
         resp = binance_api.create_buy_order(bn_key, bn_secret, symbol, replenish_amount, price)
-        if 'orderId' in resp:
-            history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({symbol: resp})
-        else:
-            history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({symbol: {
+        if 'orderId' not in resp:
+            resp = {
                         "error": "Sell "+symbol+" failed - "+resp['msg'],
                         "type":"BUY",
                         "Amount":replenish_amount,
                         "Price":format_num_10f(price)
                     }
-                })
+    history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({symbol: resp})
+    logger.info("["+strategy['Name']+"] CEX direct countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
     return history
 
 def start_indirect_trade(bn_key, bn_secret, strategy, history, session_num, mm2_swap_uuid,
@@ -558,29 +623,28 @@ def start_indirect_trade(bn_key, bn_secret, strategy, history, session_num, mm2_
         rep_quote_amount = spend_amount*spend_quote_price
     # Replenish spent BTC, spending DASH
     resp = binance_api.create_sell_order(bn_key, bn_secret, spend_symbol, float(spend_amount), spend_quote_price)
-    if 'orderId' in resp:
-        history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({spend_symbol: resp})
-    else:
-        history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({spend_symbol: {
-                    "error": "Sell "+spend_symbol+" failed - "+resp['msg'],
-                    "type":"SELL",
-                    "Amount":spend_amount,
-                    "Price":format_num_10f(spend_quote_price)
-                }
-            })
+    if 'orderId' not in resp:
+        resp = {
+                "error": "Sell "+spend_symbol+" failed - "+resp['msg'],
+                "type":"SELL",
+                "Amount":spend_amount,
+                "Price":format_num_10f(spend_quote_price)
+            }
+    history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({spend_symbol: resp})
+    logger.info("["+strategy['Name']+"] CEX indirect countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
 
     # Replenish 100 KMD, spending BTC 
     resp = binance_api.create_buy_order(bn_key, bn_secret, replenish_symbol, float(replenish_amount), replenish_quote_price)
-    if 'orderId' in resp:
-        history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({replenish_symbol: resp})
-    else:
-        history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({replenish_symbol: {
-                    "error": "Sell "+replenish_symbol+" failed - "+resp['msg'],
-                    "type":"SELL",
-                    "Amount":replenish_amount,
-                    "Price":format_num_10f(replenish_quote_price)
-                }
-            })
+    if 'orderId' not in resp:
+        resp = {
+                "error": "Sell "+replenish_symbol+" failed - "+resp['msg'],
+                "type":"SELL",
+                "Amount":replenish_amount,
+                "Price":format_num_10f(replenish_quote_price)
+            }
+    history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({replenish_symbol: resp})
+    logger.info("["+strategy['Name']+"] CEX indirect countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
+
     return history
 
 def calc_balance_deltas(strategy, history):
@@ -688,34 +752,28 @@ def cancel_strategy(mm2_ip, mm2_rpc_pass, history, strategy):
             rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
         session.update({"MM2 open orders":[]})
         history['Sessions'].update({str(len(history['Sessions'])-1):session})
+    logger.info("["+strategy['Name']+"] Strategy cancelled")
     return history
 
 def cancel_session_orders(mm2_ip, mm2_rpc_pass, history):
-    print("cancelling session orders")
     session = str(len(history['Sessions'])-1)
     # Cancel MM2 Orders
     mm2_order_uuids = history['Sessions'][str(len(history['Sessions'])-1)]['MM2 open orders']
-    print(mm2_order_uuids)
     for order_uuid in mm2_order_uuids:
-        print(order_uuid)
         order_info = rpclib.order_status(mm2_ip, mm2_rpc_pass, order_uuid).json()
         swap_in_progress = False
         if 'order' in order_info:
             swaps = order_info['order']['started_swaps']
-            print(swaps)
             # updates swaps
             for swap in swaps:
                 swap_status = get_mm2_swap_status(mm2_ip, mm2_rpc_pass, swap)
                 status = swap_status[0]
                 swap_data = swap_status[1]
-                print(swap+": "+status)
                 if status != 'Finished' and status != 'Failed':
                     # swap in progress
                     swap_in_progress = True
                     if swap not in history['Sessions'][session]['MM2 swaps in progress']:
                         history['Sessions'][session]['MM2 swaps in progress'].append(swap)
-        else:
-            print(order_info)
         if not swap_in_progress:
             rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
 
@@ -752,6 +810,8 @@ def init_strategy(name, strategy_type, sell_list, buy_list, margin, refresh_inte
     }
     with open(config_path+"history/"+name+".json", 'w+') as f:
         f.write(json.dumps(history, indent=4))
+    logger.info("["+strategy['Name']+"] Strategy created! ")
+    logger.info("["+strategy['Name']+"] Strategy parameters: "+str(strategy))
     return strategy
 
 def init_session(strategy_name, strategy, history, config_path):
@@ -787,6 +847,7 @@ def init_session(strategy_name, strategy, history, config_path):
         f.write(json.dumps(history, indent=4))
     with open(config_path+"strategies/"+strategy_name+".json", 'w+') as f:
         f.write(json.dumps(strategy, indent=4))
+    logger.info("["+strategy['Name']+"] Strategy session initiated")
 
 # REVIEW 
 

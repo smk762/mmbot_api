@@ -3,8 +3,18 @@ import os
 import json
 import time
 import requests
+import statistics
 from os.path import expanduser
 from . import coinslib
+import logging
+from statsmodels.stats.weightstats import DescrStatsW
+
+logger = logging.getLogger()
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 maker_success_events = ['Started', 'Negotiated', 'TakerFeeValidated', 'MakerPaymentSent', 'TakerPaymentReceived', 'TakerPaymentWaitConfirmStarted',
                         'TakerPaymentValidatedAndConfirmed', 'TakerPaymentSpent', 'Finished']
@@ -303,35 +313,60 @@ def check_active_coins(node_ip, user_pass):
         active_cointags.append(coin['ticker'])
     return active_cointags 
 
-
-
 def get_kmd_mm2_price(node_ip, user_pass, coin):
     try:
-        #print("getting kmd mm2 price for "+coin)
+        logger.info("getting kmd mm2 price for "+coin)
         kmd_orders = orderbook(node_ip, user_pass, coin, 'KMD').json()
-        kmd_value = 0
-        min_kmd_value = 999999999999999999
-        total_kmd_value = 0
-        max_kmd_value = 0
-        kmd_volume = 0
-        num_asks = len(kmd_orders['asks'])
-        for asks in kmd_orders['asks']:
-            kmd_value = float(asks['maxvolume']) * float(asks['price'])
-            if kmd_value < min_kmd_value:
-                min_kmd_value = kmd_value
-            elif kmd_value > max_kmd_value:
-                max_kmd_value = kmd_value
-            total_kmd_value += kmd_value
-            kmd_volume += float(asks['maxvolume'])
-        if num_asks > 0:
-            median_kmd_value = total_kmd_value/kmd_volume
+        logger.info(kmd_orders)
+        prices_list = []
+        volumes_list = []
+        if 'asks' in kmd_orders:
+            num_asks = len(kmd_orders['asks'])
+            if num_asks > 1:
+                for ask in kmd_orders['asks']:
+                    prices_list.append(float(ask['price']))
+                    volumes_list.append(float(ask['maxvolume']))
+                    kmd_value = float(ask['maxvolume']) * float(ask['price'])
+                weighted_stats = DescrStatsW(prices_list, weights=volumes_list, ddof=0)
+
+                min_kmd_price = 999999999999999999
+                max_kmd_price = 0
+                for ask in kmd_orders['asks']:
+                    if float(ask['price']) < min_kmd_price:
+                        min_kmd_price = float(ask['price'])
+                    elif float(ask['price']) > max_kmd_price:
+                        max_kmd_price = float(ask['price'])
+                weighted_stats_mean = weighted_stats.mean
+                '''
+                logger.info("## Price Stats for "+coin+" ("+str(num_asks)+" asks) ##")
+                logger.info(coin+" prices_list = "+str(prices_list))
+                logger.info(coin+" volumes_list = "+str(volumes_list))
+                logger.info(coin+" min_kmd_price = "+str(min_kmd_price))
+                logger.info(coin+" weighted_stats.mean = "+str(weighted_stats.mean))
+                logger.info(coin+" max_kmd_price = "+str(max_kmd_price))
+                logger.info(coin+" weighted_stats.std = "+str(weighted_stats.std))
+                logger.info(coin+" weighted_stats.var = "+str(weighted_stats.var))
+                logger.info(coin+" weighted_stats.std_mean = "+str(weighted_stats.std_mean))
+                logger.info("###########################################")
+                '''
+            elif num_asks == 1:
+
+                min_kmd_price = float(kmd_orders['asks'][0]['price'])
+                weighted_stats_mean = float(kmd_orders['asks'][0]['price'])
+                max_kmd_price = float(kmd_orders['asks'][0]['price'])
+
+            else:
+                min_kmd_price = '-'
+                weighted_stats_mean = '-'
+                max_kmd_price = '-'
         else:
-            min_kmd_value = 'No Data'
-            median_kmd_value = 'No Data'
-            max_kmd_value = 'No Data'
-        return min_kmd_value, median_kmd_value, max_kmd_value
-    except:
-        min_kmd_value = 'No Data'
-        median_kmd_value = 'No Data'
-        max_kmd_value = 'No Data'
-        return min_kmd_value, median_kmd_value, max_kmd_value
+            min_kmd_price = '-'
+            weighted_stats_mean = '-'
+            max_kmd_price = '-'
+    except Exception as e:
+        min_kmd_price = '-'
+        weighted_stats_mean = '-'
+        max_kmd_price = '-'
+        logger.warning("get_kmd_mm2_price err: "+str(e))
+    return min_kmd_price, weighted_stats_mean, max_kmd_price
+

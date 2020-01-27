@@ -553,7 +553,9 @@ def get_binance_countertrade_symbols(bn_key, bn_secret, binance_balances, replen
                 quoteAsset_balance = binance_balances[replenish_coin_quoteAsset]['available']
                 replenish_coin_symbol_market_price = get_price(bn_key, replenish_coin_symbol)['price']
                 quoteAsset_req = float(replenish_coin_amount)*float(replenish_coin_symbol_market_price)
-                if quoteAsset_req < quoteAsset_balance:
+                print(quoteAsset_req)
+                print(quoteAsset_balance)
+                if float(quoteAsset_req) < float(quoteAsset_balance):
                     print("Indirect countertrading with "+replenish_coin_quoteAsset)
                     print("spend_coin_symbol: "+spend_coin_symbol)
                     print("replenish_coin_symbol: "+replenish_coin_symbol)
