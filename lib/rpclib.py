@@ -7,7 +7,7 @@ import statistics
 from os.path import expanduser
 from . import coinslib
 import logging
-from statsmodels.stats.weightstats import DescrStatsW
+#from statsmodels.stats.weightstats import DescrStatsW  // NOT WORKING IN WINDOWS
 
 logger = logging.getLogger()
 handler = logging.StreamHandler()
@@ -20,14 +20,14 @@ maker_success_events = ['Started', 'Negotiated', 'TakerFeeValidated', 'MakerPaym
                         'TakerPaymentValidatedAndConfirmed', 'TakerPaymentSpent', 'Finished']
 
 maker_errors_events = ['StartFailed', 'NegotiateFailed', 'TakerFeeValidateFailed', 'MakerPaymentTransactionFailed', 'MakerPaymentDataSendFailed',
-                      'TakerPaymentValidateFailed', 'TakerPaymentSpendFailed', 'MakerPaymentRefunded', 'MakerPaymentRefundFailed']
+                      'TakerPaymentValidateFailed', 'TakerPaymentSpendFailed', 'MakerPaymentRefunded', 'MakerPaymentRefundFailed', 'TakerPaymentWaitConfirmFailed', 'MakerPaymentWaitRefundStarted']
 
 taker_success_events = ['Started', 'Negotiated', 'TakerFeeSent', 'MakerPaymentReceived', 'MakerPaymentWaitConfirmStarted',
                         'MakerPaymentValidatedAndConfirmed', 'TakerPaymentSent', 'TakerPaymentSpent', 'MakerPaymentSpent', 'Finished']
 
 taker_errors_events = ['StartFailed', 'NegotiateFailed', 'TakerFeeSendFailed', 'MakerPaymentValidateFailed', 'TakerPaymentTransactionFailed',
                       'TakerPaymentDataSendFailed', 'TakerPaymentWaitForSpendFailed', 'MakerPaymentSpendFailed', 'TakerPaymentRefunded',
-                      'TakerPaymentRefundFailed']
+                      'TakerPaymentRefundFailed', 'MakerPaymentWaitConfirmFailed', 'TakerPaymentWaitRefundStarted']
 
 error_events = list(set(taker_errors_events + maker_errors_events))
 
@@ -320,6 +320,8 @@ def get_kmd_mm2_price(node_ip, user_pass, coin):
         logger.info(kmd_orders)
         prices_list = []
         volumes_list = []
+        sum_kmd_value = 0
+        sum_kmd_vol = 0
         if 'asks' in kmd_orders:
             num_asks = len(kmd_orders['asks'])
             if num_asks > 1:
@@ -327,7 +329,10 @@ def get_kmd_mm2_price(node_ip, user_pass, coin):
                     prices_list.append(float(ask['price']))
                     volumes_list.append(float(ask['maxvolume']))
                     kmd_value = float(ask['maxvolume']) * float(ask['price'])
-                weighted_stats = DescrStatsW(prices_list, weights=volumes_list, ddof=0)
+                    sum_kmd_value += kmd_value
+                    sum_kmd_vol += float(ask['maxvolume'])
+                weighted_stats_mean = sum_kmd_value / sum_kmd_vol
+                #weighted_stats = DescrStatsW(prices_list, weights=volumes_list, ddof=0)
 
                 min_kmd_price = 999999999999999999
                 max_kmd_price = 0
@@ -336,7 +341,8 @@ def get_kmd_mm2_price(node_ip, user_pass, coin):
                         min_kmd_price = float(ask['price'])
                     elif float(ask['price']) > max_kmd_price:
                         max_kmd_price = float(ask['price'])
-                weighted_stats_mean = weighted_stats.mean
+
+                #weighted_stats_mean = weighted_stats.mean
                 '''
                 logger.info("## Price Stats for "+coin+" ("+str(num_asks)+" asks) ##")
                 logger.info(coin+" prices_list = "+str(prices_list))

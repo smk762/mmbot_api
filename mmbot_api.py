@@ -578,29 +578,30 @@ async def strategies_history_table():
                             })
                     else:
                         logger.info("Error with Binance Order: "+str(order_info))
-                for symbol in history['Sessions'][session]['CEX swaps completed']['Binance'][uuid]:
-                    order_info = history['Sessions'][session]['CEX swaps completed']['Binance'][uuid][symbol]
-                    if order_info['side'] == 'BUY':
-                        swap_rec_coin = binance_api.binance_pair_info[symbol]['baseAsset']
-                        swap_spent_coin = binance_api.binance_pair_info[symbol]['quoteAsset']
-                        swap_rec_amount = order_info["executedQty"]
-                        swap_spent_amount = order_info["cummulativeQuoteQty"]
-                    elif order_info['side'] == 'SELL':
-                        swap_spent_coin = binance_api.binance_pair_info[symbol]['baseAsset']
-                        swap_rec_coin = binance_api.binance_pair_info[symbol]['quoteAsset']
-                        swap_spent_amount = order_info["executedQty"]
-                        swap_rec_amount = order_info["cummulativeQuoteQty"]
-                    table_data.append({
-                            "Start Time": datetime.datetime.fromtimestamp(round(order_info["time"]/1000)),
-                            "API":"Binance",
-                            "Buy Coin":swap_rec_coin,
-                            "Buy Amount":botlib.format_num_10f(swap_rec_amount),
-                            "Sell Coin":swap_spent_coin,
-                            "Sell Amount":botlib.format_num_10f(swap_spent_amount),
-                            "MM2 UUID":uuid,
-                            "Binance OrderID":order_info["orderId"],
-                            "Status": "Complete"
-                        })
+                if uuid in history['Sessions'][session]['CEX swaps completed']['Binance']:
+                    for symbol in history['Sessions'][session]['CEX swaps completed']['Binance'][uuid]:
+                        order_info = history['Sessions'][session]['CEX swaps completed']['Binance'][uuid][symbol]
+                        if order_info['side'] == 'BUY':
+                            swap_rec_coin = binance_api.binance_pair_info[symbol]['baseAsset']
+                            swap_spent_coin = binance_api.binance_pair_info[symbol]['quoteAsset']
+                            swap_rec_amount = order_info["executedQty"]
+                            swap_spent_amount = order_info["cummulativeQuoteQty"]
+                        elif order_info['side'] == 'SELL':
+                            swap_spent_coin = binance_api.binance_pair_info[symbol]['baseAsset']
+                            swap_rec_coin = binance_api.binance_pair_info[symbol]['quoteAsset']
+                            swap_spent_amount = order_info["executedQty"]
+                            swap_rec_amount = order_info["cummulativeQuoteQty"]
+                        table_data.append({
+                                "Start Time": datetime.datetime.fromtimestamp(round(order_info["time"]/1000)),
+                                "API":"Binance",
+                                "Buy Coin":swap_rec_coin,
+                                "Buy Amount":botlib.format_num_10f(swap_rec_amount),
+                                "Sell Coin":swap_spent_coin,
+                                "Sell Amount":botlib.format_num_10f(swap_spent_amount),
+                                "MM2 UUID":uuid,
+                                "Binance OrderID":order_info["orderId"],
+                                "Status": "Complete"
+                            })
     return {"table_data":table_data}
 
 @app.get("/table/bot_strategies")
