@@ -52,7 +52,7 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
             history = calc_balance_deltas(strategy, history)
             logger.info("["+strategy_name+"] Balance deltas updated")            
             # check refresh interval vs last refresh
-            refresh_time = history['Last refresh'] + strategy['Refresh interval']*60
+            refresh_time = history['Last refresh'] + strategy['Refresh interval']
             if history['Last refresh'] == 0 or refresh_time < int(time.time()) or history['Last refresh'] < session_start:
                 active_coins = mm2_active_coins(mm2_ip, mm2_rpc_pass)
                 strategy_coins = list(set(strategy['Sell list']+strategy['Buy list']))
@@ -72,8 +72,8 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
                 else:
                     logger.info("["+strategy_name+"] Skipping strategy: MM2 coins not active")
             else:
-                time_left = (history['Last refresh'] + strategy['Refresh interval']*60 - int(time.time()))/60
-                logger.info("["+strategy_name+"] Skipping strategy: waiting for refresh interval in "+str(time_left)+" min")
+                time_left = (history['Last refresh'] + strategy['Refresh interval'] - int(time.time()))
+                logger.info("["+strategy_name+"] Skipping strategy: waiting for refresh interval in "+str(time_left)+" sec")
             with open(config_path+"history/"+strategy_name+".json", 'w+') as f:
                  f.write(json.dumps(history, indent=4))
     return bot_data
@@ -741,7 +741,7 @@ def cancel_strategy(mm2_ip, mm2_rpc_pass, history, strategy):
         # calc session duration
         started_at = session['Started']
         last_refresh = history["Last refresh"]
-        if last_refresh - int(time.time()) > strategy["Refresh interval"]*60:
+        if last_refresh - int(time.time()) > strategy["Refresh interval"]:
             duration = last_refresh - started_at
         else:
             duration = int(time.time()) - started_at
