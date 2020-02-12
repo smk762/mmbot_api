@@ -277,7 +277,7 @@ def validate_coins(coins_list):
 
 def validate_cex(cex_list):
     for cex in cex_list:
-        if cex not in cex_names:
+        if cex not in cex_names and cex != "None":
             return False, cex
     return True, cex_list
 

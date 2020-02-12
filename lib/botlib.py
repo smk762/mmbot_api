@@ -463,8 +463,11 @@ def update_session_swaps(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data,
                                                         }
                                                     })
                     swaps_in_progress.remove(swap)
-                    history = start_cex_counterswap(bn_key, bn_secret, strategy, history, balances_data, session, swap)
-                    logger.info("["+strategy['Name']+"] Submitting cex counterswap for MM2 swap  ["+swap+"]")
+                    if "None" in strategy["CEX countertrade list"]:
+                        logger.info("["+strategy['Name']+"] is set to CEX = \"None\", skipping countertrade for MM2 swap  ["+swap+"]")
+                    else:
+                        logger.info("["+strategy['Name']+"] Submitting cex countertrade(s) for MM2 swap  ["+swap+"]")
+                        history = start_cex_counterswap(bn_key, bn_secret, strategy, history, balances_data, session, swap)
             elif status == 'Failed':
                 swaps_in_progress.remove(swap)
         history['Sessions'][session]['MM2 swaps in progress'] = swaps_in_progress
