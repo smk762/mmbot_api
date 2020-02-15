@@ -249,6 +249,60 @@ async def set_creds(ip: str, rpc_pass: str, key: str, secret: str, username: str
 
 # TABLE FORMATTED 
 
+@app.get("/table/mm2_balances")
+async def mm2_balances():
+    table_data = []
+    if config_path == 'not set':
+        resp = {
+            "response": "error",
+            "message": "You need to be logged in with credentials set via the /set_creds endpoint.",
+            "table_data": table_data
+        }
+        return resp
+    else:
+        usd_sum = 0
+        kmd_sum = 0
+        btc_sum = 0
+        active_coins = botlib.mm2_active_coins(mm2_ip, mm2_rpc_pass)
+        for coin in active_coins:
+            usd_val = '-'
+            kmd_val = '-'
+            btc_val = '-'
+            if coin in balances_data["mm2"]:
+                bal = round(float(balances_data["mm2"][coin]['total']),8)
+                if coin in prices_data['average']:
+                    usd_price = prices_data['average'][coin]['USD']
+                    btc_price = prices_data['average'][coin]['BTC']
+                    kmd_price = prices_data['average'][coin]['KMD']
+                    if usd_price != '-':
+                        usd_val = round(float(usd_price)*float(bal),4)
+                        kmd_val = round(float(kmd_price)*float(bal),4)
+                        btc_val = round(float(btc_price)*float(bal),8)
+                        usd_sum += usd_val
+                        kmd_sum += kmd_val
+                        btc_sum += btc_val
+                table_data.append({
+                    "Coin":coin,
+                    "MM2 Balance":bal,
+                    "USD Value":usd_val,
+                    "BTC Value":btc_val,
+                    "KMD Value":kmd_val
+                    })
+        table_data.append({
+            "Coin":'TOTAL',
+            "MM2 Balance":'-',
+            "USD Value":round(usd_sum,4),
+            "BTC Value":round(btc_sum,8),
+            "KMD Value":round(kmd_sum,4)
+            })
+        resp = {
+            "response": "success",
+            "message":str(len(active_coins))+" balances returned!",
+            "table_data": table_data
+        }
+    return resp
+        
+
 @app.get("/table/mm2_open_orders")
 async def mm2_open_orders_table():
     table_data = []
@@ -724,6 +778,7 @@ async def bot_strategy_summary(strategy_name):
             "table_data": table_data
         }
     return resp
+
 
 # CACHED DATA
 
