@@ -4,6 +4,14 @@ import time
 import requests
 import datetime
 
+def format_num_10f(val):
+    if val != 0:
+        try:
+            val = "{:.10f}".format(round(float(val),10))
+        except:
+            pass
+    return val
+    
 def get_paprika_history(coin_id, since='year_ago', quote='usd'):
     intervals = ['5m', '10m', '15m', '30m', '45m', '1h', '2h', '3h', '6h', '12h', '24h', '1d', '7d', '14d', '30d', '90d', '365d']
     quotes = ['usd', 'btc']

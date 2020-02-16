@@ -779,6 +779,79 @@ async def bot_strategy_summary(strategy_name):
         }
     return resp
 
+@app.get("/table/prices")
+async def prices_table():
+    table_data = []
+    if len(prices_data['average']) == 0:
+        resp = {
+            "response": "error",
+            "message": "Strategy '"+strategy_name+"' not found!",
+            "table_data": []
+        }
+        return resp
+    for coin in prices_data['average']:
+        bn_btc_price = '-'
+        bn_tusd_price = '-'
+        gk_btc_price = '-'
+        gk_usd_price = '-'
+        pk_btc_price = '-'
+        pk_usd_price = '-'
+        mm_btc_price = '-'
+        mm_usd_price = '-'
+        mm_kmd_price = '-'
+        average_btc_price = '-'
+        average_usd_price = '-'
+        if coin in prices_data['average']:
+            if 'BTC' in prices_data['average'][coin]:
+                average_btc_price = botlib.format_num_10f(prices_data['average'][coin]['BTC'])
+            if 'USD' in prices_data['average'][coin]:
+                average_usd_price = botlib.format_num_10f(prices_data['average'][coin]['USD'])
+        if coin in prices_data["Binance"]:
+            if 'BTC' in prices_data["Binance"][coin]:
+                bn_btc_price = botlib.format_num_10f(prices_data["Binance"][coin]['BTC'])
+            if 'TUSD' in prices_data["Binance"][coin]:
+                bn_tusd_price = botlib.format_num_10f(prices_data["Binance"][coin]['TUSD'])
+        if coin in prices_data['gecko']:
+            if 'BTC' in prices_data['gecko'][coin]:
+                gk_btc_price = botlib.format_num_10f(prices_data['gecko'][coin]['BTC'])
+            if 'USD' in prices_data['gecko'][coin]:
+                gk_usd_price = botlib.format_num_10f(prices_data['gecko'][coin]['USD'])
+        if coin in prices_data['paprika']:
+            if 'BTC' in prices_data['paprika'][coin]:
+                pk_btc_price = botlib.format_num_10f(prices_data['paprika'][coin]['BTC'])
+            if 'USD' in prices_data['paprika'][coin]:
+                pk_usd_price = botlib.format_num_10f(prices_data['paprika'][coin]['USD'])
+        if coin in prices_data['mm2_orderbook']:
+            if 'BTC' in prices_data['mm2_orderbook'][coin]:
+                mm_btc_price = botlib.format_num_10f(prices_data['mm2_orderbook'][coin]['BTC'])
+            if 'USD' in prices_data['mm2_orderbook'][coin]:
+                mm_usd_price = botlib.format_num_10f(prices_data['mm2_orderbook'][coin]['USD'])
+            if 'KMD' in prices_data['mm2_orderbook'][coin]:
+                mm_kmd_price = botlib.format_num_10f(prices_data['mm2_orderbook'][coin]['KMD'])
+        price_row = {
+                    'Coin':coin,
+                    'Binance BTC':bn_btc_price,
+                    'Gecko BTC':gk_btc_price,
+                    'Paprika BTC':pk_btc_price,
+                    'Average BTC':average_btc_price, 
+                    'Binance TUSD':bn_tusd_price,
+                    'Gecko USD':gk_usd_price,
+                    'Paprika USD':pk_usd_price,
+                    'Average USD':average_usd_price,
+                    'Marketmaker BTC':mm_btc_price,
+                    'Marketmaker USD':mm_usd_price,
+                    'Marketmaker KMD':mm_kmd_price
+                }
+        table_data.append(price_row)
+        resp = {
+            "response": "success",
+            "message": "Prices found for "+str(len(prices_data['average']))+" coins returned",
+            "table_data": table_data
+        }
+    return resp
+
+
+
 
 # CACHED DATA
 
