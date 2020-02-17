@@ -851,6 +851,35 @@ async def prices_table():
     return resp
 
 
+@app.get("/labels/mm2_wallet/{coin}")
+async def mm2_wallet_labels(coin):
+    label_data = {
+        "coin":coin,
+        "address":'',
+        "total":'',
+        "locked":'',
+        "usd_val":'',
+        "btc_val":'',
+        "kmd_val":'',
+    }
+    if coin in balances_data["mm2"]:
+        balanceInfo = balances_data["mm2"][coin]
+        label_data.update({"address":balanceInfo["address"]})
+        label_data.update({"total":float(balanceInfo["total"])})
+        label_data.update({"locked":float(balanceInfo["locked"])})
+        if coin in prices_data['average']:
+            try:
+                priceInfo = prices_data['average'][coin]
+                usd_val = float(priceInfo['USD'])*float(balanceInfo["total"])
+                label_data.update({"usd_val":usd_val})
+                btc_val = float(priceInfo['BTC'])*float(balanceInfo["total"])
+                label_data.update({"btc_val":btc_val})
+                kmd_val = usd_val/float(prices_data['average']['KMD']['USD'])
+                label_data.update({"kmd_val":kmd_val})
+            except:
+                pass
+    return label_data
+
 
 
 # CACHED DATA
