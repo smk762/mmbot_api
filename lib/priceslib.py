@@ -4,6 +4,10 @@ import time
 import requests
 import datetime
 
+import logging
+
+logger = logging.getLogger()
+
 def format_num_10f(val):
     if val != 0:
         try:

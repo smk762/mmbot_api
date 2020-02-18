@@ -9,6 +9,9 @@ from os.path import expanduser
 from urllib.parse import urljoin, urlencode
 from . import coinslib
 
+import logging
+
+logger = logging.getLogger()
 
 # from https://code.luasoftware.com/tutorials/cryptocurrency/python-connect-to-binance-api/
 
@@ -38,7 +41,7 @@ def get_serverTime():
     r = requests.get(url, params=params)
     if r.status_code == 200:
         data = r.json()
-        print(f"diff={timestamp - data['serverTime']}ms")
+        logger.info(f"diff={timestamp - data['serverTime']}ms")
     else:
         raise BinanceException(status_code=r.status_code, data=r.json())
 
@@ -113,7 +116,7 @@ def get_open_orders(api_key, api_secret):
         return r.json()
 
 def create_buy_order(api_key, api_secret, ticker_pair, qty, price):
-    print("Buying "+str(round_to_step(ticker_pair, qty))+" "+ticker_pair+" on Binance at "+str(round_to_tick(ticker_pair, price)))
+    logger.info("Buying "+str(round_to_step(ticker_pair, qty))+" "+ticker_pair+" on Binance at "+str(round_to_tick(ticker_pair, price)))
     path = '/api/v3/order'
     timestamp = int(time.time() * 1000)
     headers = {
@@ -135,7 +138,7 @@ def create_buy_order(api_key, api_secret, ticker_pair, qty, price):
 
     url = urljoin(base_url, path)
     r = requests.post(url, headers=headers, params=params)
-    print(r.json())
+    logger.info(r.json())
     if r.status_code == 200:
         return r.json()
     elif r.status_code == 401:
@@ -144,7 +147,7 @@ def create_buy_order(api_key, api_secret, ticker_pair, qty, price):
         return r.json()
 
 def create_sell_order(api_key, api_secret, ticker_pair, qty, price):
-    print("Selling "+str(round_to_step(ticker_pair, qty))+" "+ticker_pair+" on Binance at "+str(round_to_tick(ticker_pair, price)))
+    logger.info("Selling "+str(round_to_step(ticker_pair, qty))+" "+ticker_pair+" on Binance at "+str(round_to_tick(ticker_pair, price)))
     path = '/api/v3/order'
     timestamp = int(time.time() * 1000)
     headers = {
@@ -164,7 +167,7 @@ def create_sell_order(api_key, api_secret, ticker_pair, qty, price):
     params['signature'] = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
     url = urljoin(base_url, path)
     r = requests.post(url, headers=headers, params=params)
-    print(r.json())
+    logger.info(r.json())
     if r.status_code == 200:
         return r.json()
     elif r.status_code == 401:
@@ -522,10 +525,10 @@ def get_binance_common_quoteAsset(base, rel):
 def get_binance_countertrade_symbols(bn_key, bn_secret, binance_balances, replenish_coin, spend_coin, replenish_coin_amount, spend_coin_amount):
     available_replenish_coin_pairs = base_asset_info[replenish_coin]['available_pairs']
     available_spend_coin_pairs = base_asset_info[spend_coin]['available_pairs']
-    print("**** "+str(binance_balances))
+    logger.info("**** "+str(binance_balances))
     if replenish_coin not in binance_balances or spend_coin not in binance_balances:
         binance_balances = get_binance_balances(bn_key, bn_secret)
-        print("## "+str(binance_balances))
+        logger.info("## "+str(binance_balances))
     replenish_coin_bal = binance_balances[replenish_coin]['available']
     spend_coin_bal = binance_balances[spend_coin]['available']
 
@@ -533,17 +536,17 @@ def get_binance_countertrade_symbols(bn_key, bn_secret, binance_balances, replen
         # check if direct spend_coin trade possible
         for symbol in available_spend_coin_pairs:
             if binance_pair_info[symbol]['quoteAsset'] == replenish_coin:
-                print("Direct trade symbol found (replenish_coin quote): "+symbol)
+                logger.info("Direct trade symbol found (replenish_coin quote): "+symbol)
                 return symbol, symbol
     if spend_coin in quoteAssets:
         # check if direct replenish_coin trade possible
         for symbol in available_replenish_coin_pairs:
             if binance_pair_info[symbol]['quoteAsset'] == spend_coin:
-                print("Direct trade symbol found (spend_coin quote): "+symbol)
+                logger.info("Direct trade symbol found (spend_coin quote): "+symbol)
                 return symbol, symbol
 
     # no common pair, check for common quote asset
-    print("No common trade symbol, checking for common quote asset...")
+    logger.info("No common trade symbol, checking for common quote asset...")
     for replenish_coin_symbol in available_replenish_coin_pairs:
         replenish_coin_quoteAsset = binance_pair_info[replenish_coin_symbol]['quoteAsset']
         for spend_coin_symbol in available_spend_coin_pairs:
@@ -553,15 +556,15 @@ def get_binance_countertrade_symbols(bn_key, bn_secret, binance_balances, replen
                 quoteAsset_balance = binance_balances[replenish_coin_quoteAsset]['available']
                 replenish_coin_symbol_market_price = get_price(bn_key, replenish_coin_symbol)['price']
                 quoteAsset_req = float(replenish_coin_amount)*float(replenish_coin_symbol_market_price)
-                print(quoteAsset_req)
-                print(quoteAsset_balance)
+                logger.info(quoteAsset_req)
+                logger.info(quoteAsset_balance)
                 if float(quoteAsset_req) < float(quoteAsset_balance):
-                    print("Indirect countertrading with "+replenish_coin_quoteAsset)
-                    print("spend_coin_symbol: "+spend_coin_symbol)
-                    print("replenish_coin_symbol: "+replenish_coin_symbol)
+                    logger.info("Indirect countertrading with "+replenish_coin_quoteAsset)
+                    logger.info("spend_coin_symbol: "+spend_coin_symbol)
+                    logger.info("replenish_coin_symbol: "+replenish_coin_symbol)
                     return spend_coin_symbol, replenish_coin_symbol
                 else:
-                    print("Not enough "+replenish_coin_quoteAsset+" balance to countertrade! "+str(quoteAsset_req)+" needed, "+str(quoteAsset_balance)+" available")
+                    logger.info("Not enough "+replenish_coin_quoteAsset+" balance to countertrade! "+str(quoteAsset_req)+" needed, "+str(quoteAsset_balance)+" available")
     # If no match is found
     return False, False
 
@@ -604,7 +607,7 @@ def get_binance_price(base, rel, prices_data):
     return prices
 
 def get_btc_price(api_key, cointag):
-    #print("getting binance btc price for "+cointag)
+    #logger.info("getting binance btc price for "+cointag)
     if cointag == 'BTC':
         return 1
     else:

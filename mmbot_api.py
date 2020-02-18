@@ -26,7 +26,7 @@ import sys
 import os
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 handler = logging.StreamHandler()
 formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt='%d-%b-%y %H:%M:%S')
 handler.setFormatter(formatter)
@@ -42,8 +42,8 @@ logger.setLevel(logging.INFO)
 try:
 	root_config_path = sys.argv[1]
 except:
-	logger.info("You need to define config path as a runtime parameter!")
-	logger.info("E.g. `./mmbot_api ~/.config/KomodoPlatform`")
+	logger.critical("You need to define config path as a runtime parameter!")
+	logger.critical("E.g. `./mmbot_api ~/.config/KomodoPlatform`")
 	sys.exit()
 
 mm2_ip = '127.0.0.1'
@@ -215,7 +215,7 @@ async def set_creds(ip: str, rpc_pass: str, key: str, secret: str, username: str
     global bn_key
     global bn_secret
     global config_path
-    mm2_ip = 'http://'+ip+':7783'
+    mm2_ip = ip
     mm2_rpc_pass = rpc_pass
     bn_key = key
     bn_secret = secret
@@ -248,6 +248,33 @@ async def set_creds(ip: str, rpc_pass: str, key: str, secret: str, username: str
     bot_thread = bot_update_thread()        
 
 # TABLE FORMATTED 
+
+@app.get("/table/binance_balances")
+async def binance_balances():
+    table_data = []
+    if config_path == 'not set':
+        resp = {
+            "response": "error",
+            "message": "You need to be logged in with credentials set via the /set_creds endpoint.",
+            "table_data": table_data
+        }
+        return resp
+    else:
+        for coin in balances_data["Binance"]:
+            table_data.append({
+                "Coin":coin,
+                "Balance":balances_data["Binance"][coin]['total'],
+                "Available":balances_data["Binance"][coin]['available'],
+                "Locked":balances_data["Binance"][coin]['locked']
+            })
+        resp = {
+            "response": "success",
+            "message":"Binance balances returned!",
+            "table_data": table_data
+        }
+    return resp
+        
+
 
 @app.get("/table/mm2_balances")
 async def mm2_balances():
@@ -478,28 +505,30 @@ async def binance_open_orders():
                 })
     return {"table_data":table_data}
 
-@app.get("/table/get_binance_depth/{symbol}")
-async def get_binance_depth(symbol):
+@app.get("/table/get_binance_depth/{symbol}/{depth_type}")
+async def get_binance_depth(symbol, depth_type):
     table_data = []
     depth = binance_api.get_depth(bn_key, symbol, 20)
-    for item in depth['bids']:
-        price = float(item[0])
-        volume = float(item[1])
-        table_data.append({
-                "Pair": symbol,
-                "Price": "{:.8f}".format(price),
-                "Volume": botlib.format_num_10f(volume),
-                "Bid/Ask":'Bid'
-            })
-    for item in depth['asks']:
-        price = float(item[0])
-        volume = float(item[1])
-        table_data.append({
-                "Pair": symbol,
-                "Price": "{:.8f}".format(price),
-                "Volume": botlib.format_num_10f(volume),
-                "Bid/Ask":'Ask'
-            })
+    if depth_type == 'bids':
+        for item in depth['bids']:
+            price = float(item[0])
+            volume = float(item[1])
+            table_data.append({
+                    "Pair": symbol,
+                    "Price": "{:.8f}".format(price),
+                    "Volume": botlib.format_num_10f(volume),
+                    "Bid/Ask":'Bid'
+                })
+    if depth_type == 'asks':
+        for item in depth['asks']:
+            price = float(item[0])
+            volume = float(item[1])
+            table_data.append({
+                    "Pair": symbol,
+                    "Price": "{:.8f}".format(price),
+                    "Volume": botlib.format_num_10f(volume),
+                    "Bid/Ask":'Ask'
+                })
     return {"table_data":table_data}
 
 @app.get("/table/mm2_history")
@@ -785,7 +814,7 @@ async def prices_table():
     if len(prices_data['average']) == 0:
         resp = {
             "response": "error",
-            "message": "Strategy '"+strategy_name+"' not found!",
+            "message": "Price data not found!",
             "table_data": []
         }
         return resp
@@ -856,11 +885,11 @@ async def mm2_wallet_labels(coin):
     label_data = {
         "coin":coin,
         "address":'',
-        "total":'',
-        "locked":'',
-        "usd_val":'',
-        "btc_val":'',
-        "kmd_val":'',
+        "total":'-',
+        "locked":'-',
+        "usd_val":'-',
+        "btc_val":'-',
+        "kmd_val":'-',
     }
     if coin in balances_data["mm2"]:
         balanceInfo = balances_data["mm2"][coin]
@@ -880,7 +909,16 @@ async def mm2_wallet_labels(coin):
                 pass
     return label_data
 
-
+@app.get("/mm2_trade_fee/{coin}")
+async def mm2_trade_fee(coin):
+    try:
+        trade_fee_resp = rpclib.get_fee(mm2_ip, mm2_rpc_pass, coin).json()
+        logger.info("trade_fee_resp: "+str(trade_fee_resp))
+        trade_fee = float(trade_fee_resp['result']['amount'])
+    except Exception as e:
+        logger.info("get_fee failed "+str(e))
+        trade_fee = 0.001
+    return trade_fee
 
 # CACHED DATA
 
@@ -1276,5 +1314,5 @@ async def binance_prices(base, rel):
     return prices
 
 if __name__ == "__main__":
-    format = '%(asctime)s %(levelname)-8s %(message)s'
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    logging.basicConfig(format='%(asctime)s %(levelname)-8s %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+    uvicorn.run(app, host="127.0.0.1", port=8000, access_log=False, log_level='info')

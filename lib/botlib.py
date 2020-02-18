@@ -4,16 +4,9 @@ import json
 import time
 import requests
 from . import rpclib, priceslib, binance_api, coinslib
-
 import logging
 
 logger = logging.getLogger()
-handler = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt='%d-%b-%y %H:%M:%S')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
-
 #  LOOPS
 def format_num_10f(val):
     if val != 0:
@@ -251,8 +244,6 @@ def prices_loop(mm2_ip, mm2_rpc_pass):
                         prices_data['mm2_orderbook'][coin]['USD'] = prices_data['average']['KMD']['USD']
                     else:
                         mm2_kmd_price = rpclib.get_kmd_mm2_price(mm2_ip, mm2_rpc_pass, coin)
-                        print(coin)
-                        print(mm2_kmd_price[1])
                         prices_data['mm2_orderbook'][coin]['KMD'] = mm2_kmd_price[1]
                         if mm2_kmd_price[1] != '-':
                             if prices_data['average']['KMD']['BTC'] != '-':
@@ -277,8 +268,6 @@ def prices_loop(mm2_ip, mm2_rpc_pass):
 
         except Exception as e:
                 logger.info("Error getting KMD price (prices loop): "+str(e))
-        logger.info(len(coinslib.cointags))
-        logger.info(coinslib.cointags)
     return prices_data
 
 # MISC

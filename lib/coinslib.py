@@ -3,10 +3,10 @@
 # premium: value relative to binance market rate to setprices as marketmaker.
 # min/max/stepsize need to be set from values from 
 # https://api.binance.com/api/v1/exchangeInfo
-from . import priceslib
+from . import priceslib 
 import logging
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger()
 coin_api_codes = {
    'AXE':{
       'coingecko_id':'axe',

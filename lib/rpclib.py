@@ -10,11 +10,6 @@ import logging
 #from statsmodels.stats.weightstats import DescrStatsW  // NOT WORKING IN WINDOWS
 
 logger = logging.getLogger()
-handler = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt='%d-%b-%y %H:%M:%S')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)
 
 maker_success_events = ['Started', 'Negotiated', 'TakerFeeValidated', 'MakerPaymentSent', 'TakerPaymentReceived', 'TakerPaymentWaitConfirmStarted',
                         'TakerPaymentValidatedAndConfirmed', 'TakerPaymentSpent', 'Finished']
