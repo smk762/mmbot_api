@@ -310,9 +310,9 @@ def check_active_coins(node_ip, user_pass):
 
 def get_kmd_mm2_price(node_ip, user_pass, coin):
     try:
-        logger.info("getting kmd mm2 price for "+coin)
+        #logger.info("getting kmd mm2 price for "+coin)
         kmd_orders = orderbook(node_ip, user_pass, coin, 'KMD').json()
-        logger.info(kmd_orders)
+        #logger.info(kmd_orders)
         prices_list = []
         volumes_list = []
         sum_kmd_value = 0
@@ -336,20 +336,6 @@ def get_kmd_mm2_price(node_ip, user_pass, coin):
                         min_kmd_price = float(ask['price'])
                     elif float(ask['price']) > max_kmd_price:
                         max_kmd_price = float(ask['price'])
-
-                #weighted_stats_mean = weighted_stats.mean
-                '''
-                logger.info("## Price Stats for "+coin+" ("+str(num_asks)+" asks) ##")
-                logger.info(coin+" prices_list = "+str(prices_list))
-                logger.info(coin+" volumes_list = "+str(volumes_list))
-                logger.info(coin+" min_kmd_price = "+str(min_kmd_price))
-                logger.info(coin+" weighted_stats.mean = "+str(weighted_stats.mean))
-                logger.info(coin+" max_kmd_price = "+str(max_kmd_price))
-                logger.info(coin+" weighted_stats.std = "+str(weighted_stats.std))
-                logger.info(coin+" weighted_stats.var = "+str(weighted_stats.var))
-                logger.info(coin+" weighted_stats.std_mean = "+str(weighted_stats.std_mean))
-                logger.info("###########################################")
-                '''
             elif num_asks == 1:
 
                 min_kmd_price = float(kmd_orders['asks'][0]['price'])
@@ -368,6 +354,6 @@ def get_kmd_mm2_price(node_ip, user_pass, coin):
         min_kmd_price = '-'
         weighted_stats_mean = '-'
         max_kmd_price = '-'
-        logger.warning("get_kmd_mm2_price err: "+str(e))
+        #logger.warning("get_kmd_mm2_price err: "+str(e))
     return min_kmd_price, weighted_stats_mean, max_kmd_price
 

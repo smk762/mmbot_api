@@ -5,7 +5,6 @@
 # https://api.binance.com/api/v1/exchangeInfo
 from . import priceslib 
 import logging
-
 logger = logging.getLogger()
 coin_api_codes = {
    'AXE':{

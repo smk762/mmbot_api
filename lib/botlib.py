@@ -27,7 +27,7 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, config_path):
     return orderbook_data
     
 def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data, config_path):
-    logger.info("Running bot loop")
+    #logger.info("Running bot loop")
     strategies = [ x[:-5] for x in os.listdir(config_path+'/strategies') if x.endswith("json") ]
     bot_data = "bot data placeholder"
     for strategy_name in strategies:
@@ -36,14 +36,14 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
         if history['Status'] == 'active':
             session_start = history['Sessions'][str(len(history['Sessions'])-1)]['Started']
             history['Sessions'][str(len(history['Sessions'])-1)].update({"Duration":int(time.time())-session_start})
-            logger.info("Active strategy: "+strategy_name)
+            #logger.info("Active strategy: "+strategy_name)
             with open(config_path+"strategies/"+strategy_name+".json", 'r') as f:
                 strategy = json.loads(f.read())
             history = update_session_swaps(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, strategy, history)
             history = get_binance_orders_status(bn_key, bn_secret, history)
-            logger.info("["+strategy_name+"] Session swaps updated")
+            #logger.info("["+strategy_name+"] Session swaps updated")
             history = calc_balance_deltas(strategy, history)
-            logger.info("["+strategy_name+"] Balance deltas updated")            
+            #logger.info("["+strategy_name+"] Balance deltas updated")            
             # check refresh interval vs last refresh
             refresh_time = history['Last refresh'] + strategy['Refresh interval']
             if history['Last refresh'] == 0 or refresh_time < int(time.time()) or history['Last refresh'] < session_start:
@@ -55,7 +55,7 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
                         inactive_skip = True
                         break
                 if not inactive_skip:
-                    logger.info("["+strategy_name+"] Refreshing strategy...")
+                    #logger.info("["+strategy_name+"] Refreshing strategy...")
                     history.update({'Last refresh':int(time.time())})
                     # cancel old orders
                     history = cancel_session_orders(mm2_ip, mm2_rpc_pass, history)
@@ -66,7 +66,7 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
                     logger.info("["+strategy_name+"] Skipping strategy: MM2 coins not active")
             else:
                 time_left = (history['Last refresh'] + strategy['Refresh interval'] - int(time.time()))
-                logger.info("["+strategy_name+"] Skipping strategy: waiting for refresh interval in "+str(time_left)+" sec")
+                #logger.info("["+strategy_name+"] Skipping strategy: waiting for refresh interval in "+str(time_left)+" sec")
             with open(config_path+"history/"+strategy_name+".json", 'w+') as f:
                  f.write(json.dumps(history, indent=4))
     return bot_data
@@ -438,10 +438,10 @@ def update_session_swaps(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data,
             swap_status = get_mm2_swap_status(mm2_ip, mm2_rpc_pass, swap)
             status = swap_status[0]
             swap_data = swap_status[1]
-            logger.info("["+strategy['Name']+"] Swap "+swap+" status: "+status)
+            #logger.info("["+strategy['Name']+"] Swap "+swap+" status: "+status)
             if status == 'Finished':
                 if "my_info" in swap_data:
-                    logger.info("updating session deltas history")
+                    #logger.info("updating session deltas history")
                     history['Sessions'][session]['MM2 swaps completed'].update({
                                                         swap:{
                                                             "Recieved coin":swap_data["my_info"]["other_coin"],
@@ -475,7 +475,7 @@ def get_binance_orders_status(bn_key, bn_secret, history):
                         resp = binance_api.get_order(bn_key, bn_secret, symbol, orderId)
                         if "status" in resp:
                             if resp['status'] == 'FILLED':
-                                logger.info("CEX Order complete: "+str(history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]))
+                                #logger.info("CEX Order complete: "+str(history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]))
                                 # move to "completed"
                                 if mm2_uuid not in history['Sessions'][session]["CEX swaps completed"]["Binance"]:
                                     history['Sessions'][session]["CEX swaps completed"]["Binance"].update({mm2_uuid:{}})
@@ -483,7 +483,7 @@ def get_binance_orders_status(bn_key, bn_secret, history):
                                 # remove from open
                                 rem_symbols.append(symbol)
                             elif resp['status'] == 'CANCELLED':
-                                logger.info("CEX Order cancelled: "+str(history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]))
+                                #logger.info("CEX Order cancelled: "+str(history['Sessions'][session]["CEX open orders"]["Binance"][mm2_uuid][symbol]))
                                 # move to "completed"
                                 if mm2_uuid not in history['Sessions'][session]["CEX swaps completed"]["Binance"]:
                                     history['Sessions'][session]["CEX swaps completed"]["Binance"].update({mm2_uuid:{}})
@@ -572,7 +572,7 @@ def start_direct_trade(bn_key, bn_secret, strategy, history, session_num, mm2_sw
                         "Price":format_num_10f(price)
                     }
     history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({symbol: resp})
-    logger.info("["+strategy['Name']+"] CEX direct countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
+    #logger.info("["+strategy['Name']+"] CEX direct countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
     return history
 
 def start_indirect_trade(bn_key, bn_secret, strategy, history, session_num, mm2_swap_uuid,
@@ -623,7 +623,7 @@ def start_indirect_trade(bn_key, bn_secret, strategy, history, session_num, mm2_
                 "Price":format_num_10f(spend_quote_price)
             }
     history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({spend_symbol: resp})
-    logger.info("["+strategy['Name']+"] CEX indirect countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
+    #logger.info("["+strategy['Name']+"] CEX indirect countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
 
     # Replenish 100 KMD, spending BTC 
     resp = binance_api.create_buy_order(bn_key, bn_secret, replenish_symbol, float(replenish_amount), replenish_quote_price)
@@ -635,7 +635,7 @@ def start_indirect_trade(bn_key, bn_secret, strategy, history, session_num, mm2_
                 "Price":format_num_10f(replenish_quote_price)
             }
     history['Sessions'][session_num]["CEX open orders"]["Binance"][mm2_swap_uuid].update({replenish_symbol: resp})
-    logger.info("["+strategy['Name']+"] CEX indirect countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
+    #logger.info("["+strategy['Name']+"] CEX indirect countertrade for mm2 swap uuid ["+mm2_swap_uuid+"]: "+str(resp))
 
     return history
 
@@ -744,7 +744,7 @@ def cancel_strategy(mm2_ip, mm2_rpc_pass, history, strategy):
             rpclib.cancel_uuid(mm2_ip, mm2_rpc_pass, order_uuid)
         session.update({"MM2 open orders":[]})
         history['Sessions'].update({str(len(history['Sessions'])-1):session})
-    logger.info("["+strategy['Name']+"] Strategy cancelled")
+    #logger.info("["+strategy['Name']+"] Strategy cancelled")
     return history
 
 def cancel_session_orders(mm2_ip, mm2_rpc_pass, history):
@@ -802,8 +802,8 @@ def init_strategy(name, strategy_type, sell_list, buy_list, margin, refresh_inte
     }
     with open(config_path+"history/"+name+".json", 'w+') as f:
         f.write(json.dumps(history, indent=4))
-    logger.info("["+strategy['Name']+"] Strategy created! ")
-    logger.info("["+strategy['Name']+"] Strategy parameters: "+str(strategy))
+    #logger.info("["+strategy['Name']+"] Strategy created! ")
+    #logger.info("["+strategy['Name']+"] Strategy parameters: "+str(strategy))
     return strategy
 
 def init_session(strategy_name, strategy, history, config_path):
@@ -839,7 +839,7 @@ def init_session(strategy_name, strategy, history, config_path):
         f.write(json.dumps(history, indent=4))
     with open(config_path+"strategies/"+strategy_name+".json", 'w+') as f:
         f.write(json.dumps(strategy, indent=4))
-    logger.info("["+strategy['Name']+"] Strategy session initiated")
+    #logger.info("["+strategy['Name']+"] Strategy session initiated")
 
 # REVIEW 
 

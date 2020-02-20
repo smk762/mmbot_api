@@ -249,6 +249,62 @@ async def set_creds(ip: str, rpc_pass: str, key: str, secret: str, username: str
 
 # TABLE FORMATTED 
 
+@app.get("/table/mm2_tx_history/{coin}")
+async def mm2_tx_history(coin: str, num_tx: int=None):
+    table_data = []
+    if config_path == 'not set':
+        resp = {
+            "response": "error",
+            "message": "You need to be logged in with credentials set via the /set_creds endpoint.",
+            "table_data": table_data
+        }
+        return resp
+    if not num_tx:
+        num_tx = 5
+    resp = rpclib.my_tx_history(mm2_ip, mm2_rpc_pass, coin, num_tx).json()
+    if coin in balances_data["mm2"]:
+        my_address = balances_data["mm2"][coin]['address']
+    else:
+        my_address = ''
+    logger.warning("my_address: "+my_address)
+    if 'result' in resp:
+        if 'transactions' in resp['result']:
+            table_data = []
+            for tx in resp['result']['transactions']:
+                if 'amount' in tx['fee_details']:
+                    fee = tx['fee_details']['amount']+ " " +tx['coin']
+                if 'total_fee' in tx['fee_details']:
+                    fee = tx['fee_details']['total_fee']+ " " +tx['fee_details']['coin']
+                to_addr = tx['to']
+                if len(to_addr) > 1:
+                    if my_address in to_addr:
+                        to_addr.remove(my_address)
+                tx_data = {
+                    "Time":tx['timestamp'],
+                    "Coin":tx['coin'],
+                    "Block":tx['block_height'],
+                    "To":', '.join(to_addr),
+                    "From":', '.join(tx['from']),
+                    "Recieved":tx['received_by_me'],
+                    "Sent":tx['spent_by_me'],
+                    "Fee":fee,
+                    "Confirmations":tx['confirmations'],
+                    "TXID":tx['tx_hash']
+                }
+                table_data.append(tx_data)
+        resp = {
+            "response": "error",
+            "message": "",
+            "table_data": table_data
+        }
+    else:
+        resp = {
+            "response": "error",
+            "message": "",
+            "table_data": table_data
+        }
+    return resp
+
 @app.get("/table/binance_balances")
 async def binance_balances():
     table_data = []
@@ -273,8 +329,6 @@ async def binance_balances():
             "table_data": table_data
         }
     return resp
-        
-
 
 @app.get("/table/mm2_balances")
 async def mm2_balances():
@@ -662,7 +716,8 @@ async def strategies_history_table():
                                     "Status": "Incomplete"
                                 })
                         else:
-                            logger.info("Error with Binance Order: "+str(order_info))
+                            #logger.info("Error with Binance Order: "+str(order_info))
+                            pass
                     if uuid in history['Sessions'][session]['CEX swaps completed']['Binance']:
                         for symbol in history['Sessions'][session]['CEX swaps completed']['Binance'][uuid]:
                             order_info = history['Sessions'][session]['CEX swaps completed']['Binance'][uuid][symbol]
@@ -689,9 +744,10 @@ async def strategies_history_table():
                                     "Status": "Complete"
                                 })
                 except Exception as e:
-                    logger.info("Error in strategy ["+json_file[:-5]+"] history table get. UUID: "+uuid)
-                    logger.info("Exception: "+str(e))
-                    logger.info("Probably ignorable (no Binance countertrade)")
+                    #logger.info("Error in strategy ["+json_file[:-5]+"] history table get. UUID: "+uuid)
+                    #logger.info("Exception: "+str(e))
+                    #logger.info("Probably ignorable (no Binance countertrade)")
+                    pass
     return {"table_data":table_data}
 
 @app.get("/table/bot_strategies")
@@ -913,10 +969,9 @@ async def mm2_wallet_labels(coin):
 async def mm2_trade_fee(coin):
     try:
         trade_fee_resp = rpclib.get_fee(mm2_ip, mm2_rpc_pass, coin).json()
-        logger.info("trade_fee_resp: "+str(trade_fee_resp))
         trade_fee = float(trade_fee_resp['result']['amount'])
     except Exception as e:
-        logger.info("get_fee failed "+str(e))
+        #logger.info("get_fee failed "+str(e))
         trade_fee = 0.001
     return trade_fee
 
