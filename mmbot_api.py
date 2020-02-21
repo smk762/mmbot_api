@@ -25,6 +25,7 @@ import json
 import sys
 import os
 import logging
+import logging.handlers
 
 logger = logging.getLogger()
 handler = logging.StreamHandler()
@@ -32,6 +33,7 @@ formatter = logging.Formatter('%(asctime)s %(levelname)-8s %(message)s', datefmt
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
+
 
 ## ALTERNATIVE APIS
 ### DEX: https://api.blocknet.co/#xbridge-api / https://github.com/blocknetdx/dxmakerbot requires syncd local nodes
@@ -52,7 +54,7 @@ bn_key = "nopass"
 bn_secret = "nopass"
 config_path = 'not set'
 
-config_folders = ['strategies', 'history']
+config_folders = ['strategies', 'history', 'debug']
 
 bot_data = {}
 mm2_orderbook_data = {}
@@ -219,10 +221,23 @@ async def set_creds(ip: str, rpc_pass: str, key: str, secret: str, username: str
     mm2_rpc_pass = rpc_pass
     bn_key = key
     bn_secret = secret
+    
     config_path = root_config_path+username+"/"
     for folder in config_folders:
         if not os.path.exists(config_path+folder):
             os.makedirs(config_path+folder)
+
+    # File logging
+    api_debug_log = root_config_path+'debug/'+username+'_debug_api.log'
+    fh = logging.handlers.RotatingFileHandler(api_debug_log, mode='w', maxBytes=500000, backupCount=5, encoding=None, delay=False)
+    #fh = logging.FileHandler(debug_log)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    logger.info("Bot Api started at "+str(int(time.time())))
+    logger.info("Setting credentials for "+username)
+    logger.info("Storing debug logs in "+api_debug_log)
+
     json_files = [ x for x in os.listdir(config_path+'history') if x.endswith("json") ]
     for json_file in json_files:
         with open(config_path+"history/"+json_file, 'r') as hist:
@@ -262,11 +277,6 @@ async def mm2_tx_history(coin: str, num_tx: int=None):
     if not num_tx:
         num_tx = 5
     resp = rpclib.my_tx_history(mm2_ip, mm2_rpc_pass, coin, num_tx).json()
-    if coin in balances_data["mm2"]:
-        my_address = balances_data["mm2"][coin]['address']
-    else:
-        my_address = ''
-    logger.warning("my_address: "+my_address)
     if 'result' in resp:
         if 'transactions' in resp['result']:
             table_data = []
@@ -277,17 +287,23 @@ async def mm2_tx_history(coin: str, num_tx: int=None):
                     fee = tx['fee_details']['total_fee']+ " " +tx['fee_details']['coin']
                 to_addr = tx['to']
                 if len(to_addr) > 1:
-                    if my_address in to_addr:
-                        to_addr.remove(my_address)
+                    for addr in tx['from']:
+                        if addr in to_addr:
+                            to_addr.remove(addr)
+                if tx['confirmations'] == 0:
+                    timestamp = int(time.time())
+                    block = resp['result']['current_block']
+                else:
+                    timestamp = tx['timestamp']
+                    block = tx['block_height']
                 tx_data = {
-                    "Time":tx['timestamp'],
+                    "Time":timestamp,
                     "Coin":tx['coin'],
-                    "Block":tx['block_height'],
+                    "Block":block,
                     "To":', '.join(to_addr),
                     "From":', '.join(tx['from']),
-                    "Recieved":tx['received_by_me'],
-                    "Sent":tx['spent_by_me'],
-                    "Fee":fee,
+                    "Amount":tx['my_balance_change'],
+                    "Fee included":fee,
                     "Confirmations":tx['confirmations'],
                     "TXID":tx['tx_hash']
                 }
@@ -341,9 +357,6 @@ async def mm2_balances():
         }
         return resp
     else:
-        usd_sum = 0
-        kmd_sum = 0
-        btc_sum = 0
         active_coins = botlib.mm2_active_coins(mm2_ip, mm2_rpc_pass)
         for coin in active_coins:
             usd_val = '-'
@@ -352,33 +365,26 @@ async def mm2_balances():
             if coin in balances_data["mm2"]:
                 bal = round(float(balances_data["mm2"][coin]['total']),8)
                 if coin in prices_data['average']:
-                    usd_price = prices_data['average'][coin]['USD']
                     btc_price = prices_data['average'][coin]['BTC']
                     kmd_price = prices_data['average'][coin]['KMD']
+                    usd_price = prices_data['average'][coin]['USD']
                     if usd_price != '-':
-                        usd_val = round(float(usd_price)*float(bal),4)
-                        kmd_val = round(float(kmd_price)*float(bal),4)
-                        btc_val = round(float(btc_price)*float(bal),8)
-                        usd_sum += usd_val
-                        kmd_sum += kmd_val
-                        btc_sum += btc_val
+                        try:
+                            btc_val = round(float(btc_price)*float(bal),8)
+                            kmd_val = round(float(kmd_price)*float(bal),4)
+                            usd_val = round(float(usd_price)*float(bal),2)
+                        except:
+                            pass
                 table_data.append({
                     "Coin":coin,
                     "MM2 Balance":bal,
-                    "USD Value":usd_val,
                     "BTC Value":btc_val,
-                    "KMD Value":kmd_val
+                    "KMD Value":kmd_val,
+                    "USD Value":usd_val
                     })
-        table_data.append({
-            "Coin":'TOTAL',
-            "MM2 Balance":'-',
-            "USD Value":round(usd_sum,4),
-            "BTC Value":round(btc_sum,8),
-            "KMD Value":round(kmd_sum,4)
-            })
         resp = {
             "response": "success",
-            "message":str(len(active_coins))+" balances returned!",
+            "message":str(len(table_data))+" balances returned!",
             "table_data": table_data
         }
     return resp

@@ -27,7 +27,7 @@ def orderbook_loop(mm2_ip, mm2_rpc_pass, config_path):
     return orderbook_data
     
 def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data, config_path):
-    #logger.info("Running bot loop")
+    logger.info("Running bot loop at "+str(int(time.time())))
     strategies = [ x[:-5] for x in os.listdir(config_path+'/strategies') if x.endswith("json") ]
     bot_data = "bot data placeholder"
     for strategy_name in strategies:
