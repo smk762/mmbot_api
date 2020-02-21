@@ -71,6 +71,8 @@ prices_data = {
 }
 addresses_data = {}
 
+bn_orders_data = []
+
 def colorize(string, color):
     colors = {
         'black':'\033[30m',
@@ -150,6 +152,21 @@ class orderbook_update_thread(object):
         global mm2_orderbook_data
         while self.signal == True:
             mm2_orderbook_data = botlib.orderbook_loop(mm2_ip, mm2_rpc_pass, config_path)
+            time.sleep(self.interval)
+
+class bn_orders_update_thread(object):
+    def __init__(self, interval=30):
+        self.interval = interval
+        self.signal = True
+        thread = Thread(target=self.run, args=())
+        thread.daemon = True                            # Daemonize thread
+        thread.start()                                  # Start the execution
+
+    def run(self):
+        global bn_orders_data
+        while self.signal == True:
+            logger.warning(bn_orders_data)
+            bn_orders_data = botlib.bn_orders_loop(bn_key, bn_secret)
             time.sleep(self.interval)
 
 class bn_balances_update_thread(object):
@@ -258,6 +275,7 @@ async def set_creds(ip: str, rpc_pass: str, key: str, secret: str, username: str
         bot_thread.signal = False
     mm2_balance_thread = mm2_balances_update_thread()
     bn_balance_thread = bn_balances_update_thread()
+    bn_orders_thread = bn_orders_update_thread()
     orderbook_thread = orderbook_update_thread()
     prices_thread = price_update_thread()
     bot_thread = bot_update_thread()        
@@ -543,27 +561,13 @@ async def binance_open_orders():
             "message": "You need to be logged in with credentials set via the /set_creds endpoint.",
             "table_data": table_data
         }
-        return resp
-    open_orders = binance_api.get_open_orders(bn_key, bn_secret)
-    for item in open_orders:
-        if 'orderId' in item:
-            order_id = item['orderId']
-            side = item['side']
-            symbol = item['symbol']
-            price = item['price']
-            qty = item['origQty']
-            filled = item['executedQty']
-            time = datetime.datetime.fromtimestamp(int(item['time']/1000))
-            table_data.append({
-                    "Order ID": order_id,
-                    "Side": side,
-                    "Pair": symbol,
-                    "Price":price,
-                    "Qty":qty,
-                    "Filled":filled,
-                    "Time":time
-                })
-    return {"table_data":table_data}
+    else:
+        resp = {
+            "response": "success",
+            "message": str(len(bn_orders_data))+" Binance orders returned",
+            "table_data": bn_orders_data
+        }
+    return resp
 
 @app.get("/table/get_binance_depth/{symbol}/{depth_type}")
 async def get_binance_depth(symbol, depth_type):

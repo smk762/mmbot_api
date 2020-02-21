@@ -2,6 +2,7 @@
 import os
 import json
 import time
+import datetime
 import requests
 from . import rpclib, priceslib, binance_api, coinslib
 import logging
@@ -69,7 +70,32 @@ def bot_loop(mm2_ip, mm2_rpc_pass, bn_key, bn_secret, balances_data, prices_data
                 #logger.info("["+strategy_name+"] Skipping strategy: waiting for refresh interval in "+str(time_left)+" sec")
             with open(config_path+"history/"+strategy_name+".json", 'w+') as f:
                  f.write(json.dumps(history, indent=4))
+
     return bot_data
+
+def bn_orders_loop(bn_key, bn_secret):
+    table_data = []
+    open_orders = binance_api.get_open_orders(bn_key, bn_secret)
+    logger.info('BN orders: '+str(open_orders))
+    for item in open_orders:
+        if 'orderId' in item:
+            order_id = item['orderId']
+            side = item['side']
+            symbol = item['symbol']
+            price = item['price']
+            qty = item['origQty']
+            filled = item['executedQty']
+            time = datetime.datetime.fromtimestamp(int(item['time']/1000))
+            table_data.append({
+                    "Order ID": order_id,
+                    "Side": side,
+                    "Pair": symbol,
+                    "Price":price,
+                    "Qty":qty,
+                    "Filled":filled,
+                    "Time":time
+                })
+    return table_data
 
 def mm2_balances_loop(mm2_ip, mm2_rpc_pass, coin):
     # get mm2 balance
