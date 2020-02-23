@@ -26,3 +26,11 @@ Install dependancies
 `sudo apt-get install libpython3.6`
 
 `pip3 install -r requirements.txt`
+
+Build with `pyinstaller --onefile mmbot_api.py`
+
+If you face issues with ydantic module / maximum recursion error while creating binary, use the version below -
+
+`SKIP_CYTHON=1 pip install git+https://github.com/samuelcolvin/pydantic.git@v0.32`
+
+Credit: https://github.com/pyinstaller/pyinstaller/issues/4346#issuecomment-520293391
