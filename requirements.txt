@@ -6,3 +6,4 @@ pydantic==1.2
 python-multipart==0.0.5
 numpy
 statsmodels
+pyinstaller
